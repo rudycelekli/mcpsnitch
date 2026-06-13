@@ -38,8 +38,8 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "pretest": "npm run build",
-    "test": "node --test \"tests/unit/**/*.test.mjs\"",
-    "test:integration": "node --test \"tests/integration/**/*.test.mjs\"",
+    "test": "node --test tests/unit/*.test.mjs",
+    "test:integration": "node --test tests/integration/*.test.mjs",
     "bench": "node bench/run.mjs",
     "verify": "npm run build && npm test && npm run test:integration && npm run bench && node dist/cli/index.js verify --root . --json",
     "smoke:tarball": "node scripts/tarball-smoke.mjs"
