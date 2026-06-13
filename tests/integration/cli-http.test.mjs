@@ -40,3 +40,21 @@ test('HTTP server exposes POST /analyze and GET /report', async () => {
   assert.ok(profiles.profiles.some((p) => p.name === 'github'));
   child.kill('SIGTERM');
 });
+
+
+test('CLI profile init and learn are real endpoints', () => {
+  const root = mkdtempSync(join(tmpdir(), 'mcpsnitch-profile-cli-'));
+  const profilePath = join(root, 'profiles', 'custom.json');
+  const init = spawnSync(process.execPath, [CLI, 'profile:init', '--name', 'custom-api', '--out', profilePath, '--allow-network', '--json'], { encoding: 'utf8' });
+  assert.equal(init.status, 0, init.stderr || init.stdout);
+  const initialized = JSON.parse(init.stdout);
+  assert.equal(initialized.profile.allowNetwork, true);
+
+  const msg = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'fetch_url', arguments: { url: 'https://example.com' } } });
+  assert.equal(spawnSync(process.execPath, [CLI, 'analyze', msg, '--root', root, '--json'], { encoding: 'utf8' }).status, 0);
+  const learn = spawnSync(process.execPath, [CLI, 'profile:learn', '--name', 'learned-empty-process', '--out', join(root, 'learned.json'), '--root', root, '--json'], { encoding: 'utf8' });
+  assert.equal(learn.status, 0, learn.stderr || learn.stdout);
+  const learned = JSON.parse(learn.stdout);
+  assert.equal(learned.profile.name, 'learned-empty-process');
+  assert.equal(learned.profile.allowSensitiveFiles, false);
+});

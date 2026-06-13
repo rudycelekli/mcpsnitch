@@ -3,5 +3,5 @@ export { appendEvent, loadEvents, summarize, verifyLog, writeReport } from './lo
 export { startHttpServer } from './http/server.js';
 export { watchStdio } from './proxy/stdio.js';
 export type { AuditEvent, Finding, Report } from './schema.js';
-export { parseLsofOutput, eventFromObservation, eventFromObserverStatus, readProcessObservations, startProcessObserver } from './process/observer.js';
-export { resolveProfile, listProfiles, BUILTIN_PROFILES } from './policy/profile.js';
+export { parseLsofOutput, eventFromObservation, eventFromObserverStatus, lsofAvailable, readProcessObservations, startProcessObserver } from './process/observer.js';
+export { resolveProfile, listProfiles, BUILTIN_PROFILES, makeProfile, writeProfile, learnProfileFromEvents } from './policy/profile.js';

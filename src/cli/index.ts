@@ -6,10 +6,10 @@ import { watchStdio } from '../proxy/stdio.js';
 import { startHttpServer } from '../http/server.js';
 import { startMcpServer } from '../mcp/server.js';
 import { eventFromObservation, readProcessObservations } from '../process/observer.js';
-import { listProfiles } from '../policy/profile.js';
+import { listProfiles, makeProfile, writeProfile, learnProfileFromEvents } from '../policy/profile.js';
 
 const program = new Command();
-program.name('mcpsnitch').description('Transparent MCP tool-call proxy and audit reporter').version('0.1.2');
+program.name('mcpsnitch').description('Transparent MCP tool-call proxy and audit reporter').version('0.1.3');
 function out(json: boolean | undefined, data: unknown, human: () => void): void { if (json) console.log(JSON.stringify(data, null, 2)); else human(); }
 function fail(json: boolean | undefined, code: number, msg: string): never { if (json) console.log(JSON.stringify({ ok: false, error: msg }, null, 2)); else console.error(`mcpsnitch: ${msg}`); process.exit(code); }
 
@@ -19,6 +19,25 @@ program.command('report').description('Print current audit report').option('--ro
 program.command('verify').description('Verify the audit log hash chain').option('--root <path>', 'workspace root', '.').option('--json', 'machine-readable output').action((o) => { const r = verifyLog(o.root); out(o.json, r, () => console.log(r.ok ? `audit log ok (${r.entries} entries)` : `audit log broken at ${r.firstBreak?.seq}: ${r.firstBreak?.reason}`)); process.exit(r.ok ? 0 : 1); });
 program.command('observe').description('One-shot OS process observation via lsof: records open files/sockets for a PID when available').requiredOption('--pid <pid>', 'child process id to inspect', (v) => Number(v)).option('--profile <name>', 'expected behavior profile: generic | filesystem | fetch | github | database', 'generic').option('--root <path>', 'workspace root', '.').option('--json', 'machine-readable output').action(async (o) => { try { const observations = await readProcessObservations(o.pid); const events = observations.map((obs) => appendEvent(eventFromObservation(obs, { profile: o.profile }), o.root)); out(o.json, { ok: true, profile: o.profile, observations: observations.length, events }, () => { console.log(`observed ${observations.length} process entries for pid ${o.pid} (profile=${o.profile})`); for (const event of events) console.log(`${event.eventType} ${event.observation?.value ?? ''}`); }); process.exit(events.some((e) => e.findings.some((f) => f.severity === 'medium' || f.severity === 'high')) ? 1 : 0); } catch (e) { fail(o.json, 2, (e as Error).message); } });
 program.command('serve').description('Start local HTTP endpoint server').option('--root <path>', 'workspace root', '.').option('--port <port>', 'port', (v) => Number(v)).option('--json', 'machine-readable startup line').action(async (o) => { const s = await startHttpServer({ root: o.root, port: o.port }); console.log(JSON.stringify({ ok: true, port: s.port, endpoints: ['POST /analyze', 'GET /report', 'POST /report', 'GET /verify', 'GET /profiles'] })); });
+
+program.command('profile:init')
+  .description('Create a custom expected-behavior profile JSON file for a long-tail MCP server')
+  .requiredOption('--out <path>', 'profile JSON file to write')
+  .requiredOption('--name <name>', 'profile name')
+  .option('--description <text>', 'profile description')
+  .option('--allow-network', 'mark network sockets as expected')
+  .option('--deny-file-read', 'mark ordinary file opens as unexpected')
+  .option('--allow-sensitive-files', 'mark sensitive files as expected (dangerous; use only for intentionally secret-reading servers)')
+  .option('--json', 'machine-readable output')
+  .action((o) => { try { const profile = writeProfile(o.out, makeProfile({ name: o.name, description: o.description, allowNetwork: !!o.allowNetwork, allowFileRead: !o.denyFileRead, allowSensitiveFiles: !!o.allowSensitiveFiles })); out(o.json, { ok: true, path: o.out, profile }, () => console.log(`wrote ${o.out} (${profile.name})`)); } catch (e) { fail(o.json, 2, (e as Error).message); } });
+
+program.command('profile:learn')
+  .description('Learn a draft expected-behavior profile from the current audit log; review before use')
+  .requiredOption('--name <name>', 'profile name')
+  .requiredOption('--out <path>', 'profile JSON file to write')
+  .option('--root <path>', 'workspace root', '.')
+  .option('--json', 'machine-readable output')
+  .action((o) => { try { const events = loadEvents(o.root); const profile = writeProfile(o.out, learnProfileFromEvents(events, { name: o.name })); out(o.json, { ok: true, path: o.out, events: events.length, profile }, () => { console.log(`learned ${o.out} from ${events.length} events`); console.log('Review before use; sensitive-file permission is never auto-learned.'); }); } catch (e) { fail(o.json, 2, (e as Error).message); } });
 program.command('profiles').description('List built-in expected-behavior profiles for contextualizing process observations').option('--json', 'machine-readable output').action((o) => { const profiles = listProfiles(); out(o.json, { ok: true, profiles }, () => { for (const p of profiles) console.log(`${p.name}: ${p.description}`); }); });
 program.command('mcp').description('Start MCPSnitch operator MCP stdio server').action(async () => startMcpServer());
 program.parseAsync().catch((e) => fail(false, 2, e.message));

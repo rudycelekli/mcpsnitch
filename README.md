@@ -24,7 +24,7 @@ Current bundled benchmark (`npm run bench`) compares raw JSON parsing/forwarding
 
 | Metric | Raw | MCPSnitch | Delta |
 |---|---:|---:|---:|
-| p99 latency | 0.0018ms | 0.0877ms | 0.0860ms (<5ms pass) |
+| p99 latency | 0.0018ms | 0.1011ms | 0.0993ms (<5ms pass) |
 
 Current generated detection evidence:
 
@@ -40,11 +40,15 @@ npm run bench
 cat bench/results/report.md
 npm run bench:false-positive
 cat bench/results/false-positive-report.md
+npm run bench:process
+cat bench/results/process-observer-report.md
 ```
 
 The false-positive harness is profile-contextual: legitimate GitHub/fetch/search/database network sockets are informational under network-capable profiles, while the same socket under `filesystem`/`generic` remains alerting.
 
 Profile-contextual false-positive harness: **0.000** benign alerting rate (0/6) and **1.000** detection on the included malicious fixtures.
+
+Live process-observer harness: **0.000** benign alerting rate and **1.000** malicious fixture detection against real child processes with real held files/sockets. Short-lived socket observed: **false** (informational sampling-limit check).
 
 ## Architecture
 
@@ -75,6 +79,8 @@ mcpsnitch watch --no-process-observer -- <mcp-server-command> [args...]
 mcpsnitch analyze '<jsonrpc-message>' --json
 mcpsnitch observe --pid <pid> --profile github --json
 mcpsnitch profiles --json
+mcpsnitch profile:init --name slack --out .mcpsnitch/profiles/slack.json --allow-network --json
+mcpsnitch profile:learn --root . --name learned-server --out .mcpsnitch/profiles/learned-server.json --json
 mcpsnitch report --json
 mcpsnitch verify --json
 mcpsnitch serve --port 3333
@@ -110,7 +116,7 @@ Profiles make process-observer findings contextual instead of noisy:
 - `github` — network is expected for GitHub/API behavior; sensitive local files are unexpected.
 - `database` — network is expected for database connections; sensitive local files are unexpected.
 
-List them with `mcpsnitch profiles --json`, `GET /profiles`, or MCP tool `snitch_profiles`.
+List them with `mcpsnitch profiles --json`, `GET /profiles`, or MCP tool `snitch_profiles`. For long-tail servers, create a custom JSON profile with `mcpsnitch profile:init`, use a profile path in `--profile ./profile.json`, or draft one from an audit log with `mcpsnitch profile:learn` and review it before use. Sensitive-file permission is never auto-learned.
 
 ## Threat model and limitations
 
@@ -119,7 +125,7 @@ What v0.1.x can honestly do:
 - Transparently proxy line-delimited MCP stdio traffic.
 - Record visible JSON-RPC tool calls and results.
 - Flag structured suspicious inputs such as sensitive paths, URL destination fields on non-network tools, and secret-like values in secret-like fields.
-- Sample the child process with `lsof` to record OS-visible open files and network sockets when the host permits it, with status events that disclose sampled mode or self-report-only downgrade.
+- Sample the child process with `lsof` to record OS-visible open files and network sockets when the host permits it, with status events that disclose sampled mode or self-report-only downgrade. The live process harness measures this layer against real held sockets/files.
 - Verify that the audit log was not edited after the fact.
 
 What v0.1.x does **not** do:

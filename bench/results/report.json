@@ -19,10 +19,10 @@
   "mcpsnitch": {
     "name": "analyzeJsonRpc JSON-RPC heuristic tap",
     "p50Ms": 0.010375,
-    "p95Ms": 0.026417,
-    "p99Ms": 0.087709
+    "p95Ms": 0.026458,
+    "p99Ms": 0.101083
   },
-  "deltaP99Ms": 0.085959,
+  "deltaP99Ms": 0.099333,
   "flagged": 100,
   "truePositives": 100,
   "falsePositives": 0,
