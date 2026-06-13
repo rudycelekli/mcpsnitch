@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "seed": "mcpsnitch-v0.1-seed",
+  "node": "v22.19.0",
+  "fixtureHash": "f40409420171099a71c91af0e02748714931062a080e8334537befe3d9f1a7e9",
+  "baseline": {
+    "name": "raw JSON.parse forwarding",
+    "p50Ms": 0.000708,
+    "p95Ms": 0.000792,
+    "p99Ms": 0.00175
+  },
+  "mcpsnitch": {
+    "name": "analyzeJsonRpc proxy tap",
+    "p50Ms": 0.009334,
+    "p95Ms": 0.015625,
+    "p99Ms": 0.047583
+  },
+  "deltaP99Ms": 0.045833,
+  "anomalyPrecision": 1,
+  "maliciousInjected": 50,
+  "flagged": 50
+}

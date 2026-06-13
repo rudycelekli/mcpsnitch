@@ -1,0 +1,66 @@
+{
+  "name": "mcpsnitch",
+  "version": "0.1.0",
+  "description": "A transparent MCP tool-call proxy and audit layer: watch MCP calls, flag suspicious behavior, and emit signed session reports.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "author": "rudycelekli",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rudycelekli/mcpsnitch.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rudycelekli/mcpsnitch/issues"
+  },
+  "homepage": "https://github.com/rudycelekli/mcpsnitch#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "mcpsnitch": "dist/cli/index.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "bench/results"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "pretest": "npm run build",
+    "test": "node --test \"tests/unit/**/*.test.mjs\"",
+    "test:integration": "node --test \"tests/integration/**/*.test.mjs\"",
+    "bench": "node bench/run.mjs",
+    "verify": "npm run build && npm test && npm run test:integration && npm run bench && node dist/cli/index.js verify --root . --json",
+    "smoke:tarball": "node scripts/tarball-smoke.mjs"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "security",
+    "audit",
+    "proxy",
+    "observability",
+    "llm-agents"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "commander": "^12.1.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0"
+  }
+}
