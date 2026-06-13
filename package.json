@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "description": "A transparent MCP tool-call proxy and audit layer: watch MCP calls, flag suspicious behavior, and emit signed session reports.",
   "type": "module",
-  "private": true,
   "license": "MIT",
   "author": "rudycelekli",
   "repository": {
