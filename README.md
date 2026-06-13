@@ -3,10 +3,13 @@
 **See what MCP tools are doing before you trust them.** MCPSnitch sits between an MCP client and server, records visible tool calls, flags suspicious file/network/secret flows, and writes a verifiable session report.
 
 ```bash
-npx mcpsnitch analyze '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"summarize","arguments":{"url":"https://example.com","token":"API_KEY=abc"}}}' --json
-npx mcpsnitch report --json
-npx mcpsnitch verify --json
+# Works now from the public GitHub release/package source:
+npx -y github:rudycelekli/mcpsnitch analyze '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"summarize","arguments":{"url":"https://example.com","token":"API_KEY=abc"}}}' --json
+npx -y github:rudycelekli/mcpsnitch report --json
+npx -y github:rudycelekli/mcpsnitch verify --json
 ```
+
+After npm publication, the same commands shorten to `npx mcpsnitch ...`.
 
 > v0.1 is **visibility, not prevention**. It observes MCP JSON-RPC traffic that passes through it; it does not sandbox server syscalls or guarantee all exfiltration is caught.
 
