@@ -1,5 +1,6 @@
 import { z } from 'zod';
 export declare const DirectionSchema: z.ZodEnum<["client_to_server", "server_to_client"]>;
+export declare const SourceSchema: z.ZodEnum<["jsonrpc_heuristic", "process_observer"]>;
 export declare const SeveritySchema: z.ZodEnum<["info", "low", "medium", "high"]>;
 export declare const FindingSchema: z.ZodObject<{
     rule: z.ZodString;
@@ -17,15 +18,55 @@ export declare const FindingSchema: z.ZodObject<{
     message: string;
     evidence?: Record<string, unknown> | undefined;
 }>;
+export declare const ObservationSchema: z.ZodObject<{
+    pid: z.ZodNumber;
+    kind: z.ZodEnum<["file_open", "network_socket"]>;
+    value: z.ZodString;
+    fd: z.ZodOptional<z.ZodString>;
+    protocol: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    value: string;
+    pid: number;
+    kind: "file_open" | "network_socket";
+    fd?: string | undefined;
+    protocol?: string | undefined;
+}, {
+    value: string;
+    pid: number;
+    kind: "file_open" | "network_socket";
+    fd?: string | undefined;
+    protocol?: string | undefined;
+}>;
 export declare const AuditEventSchema: z.ZodObject<{
     v: z.ZodLiteral<1>;
     seq: z.ZodNumber;
     at: z.ZodString;
     sessionId: z.ZodString;
+    source: z.ZodDefault<z.ZodOptional<z.ZodEnum<["jsonrpc_heuristic", "process_observer"]>>>;
+    eventType: z.ZodOptional<z.ZodString>;
     direction: z.ZodEnum<["client_to_server", "server_to_client"]>;
     method: z.ZodOptional<z.ZodString>;
     toolName: z.ZodOptional<z.ZodString>;
     requestId: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodNumber]>>;
+    observation: z.ZodOptional<z.ZodObject<{
+        pid: z.ZodNumber;
+        kind: z.ZodEnum<["file_open", "network_socket"]>;
+        value: z.ZodString;
+        fd: z.ZodOptional<z.ZodString>;
+        protocol: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        value: string;
+        pid: number;
+        kind: "file_open" | "network_socket";
+        fd?: string | undefined;
+        protocol?: string | undefined;
+    }, {
+        value: string;
+        pid: number;
+        kind: "file_open" | "network_socket";
+        fd?: string | undefined;
+        protocol?: string | undefined;
+    }>>;
     bytesIn: z.ZodNumber;
     bytesOut: z.ZodNumber;
     estimatedCostUsd: z.ZodNumber;
@@ -54,6 +95,7 @@ export declare const AuditEventSchema: z.ZodObject<{
     v: 1;
     seq: number;
     sessionId: string;
+    source: "jsonrpc_heuristic" | "process_observer";
     direction: "client_to_server" | "server_to_client";
     bytesIn: number;
     bytesOut: number;
@@ -68,9 +110,17 @@ export declare const AuditEventSchema: z.ZodObject<{
     }[];
     prevHash: string;
     hash: string;
+    eventType?: string | undefined;
     method?: string | undefined;
     toolName?: string | undefined;
     requestId?: string | number | undefined;
+    observation?: {
+        value: string;
+        pid: number;
+        kind: "file_open" | "network_socket";
+        fd?: string | undefined;
+        protocol?: string | undefined;
+    } | undefined;
 }, {
     at: string;
     v: 1;
@@ -90,15 +140,25 @@ export declare const AuditEventSchema: z.ZodObject<{
     }[];
     prevHash: string;
     hash: string;
+    source?: "jsonrpc_heuristic" | "process_observer" | undefined;
+    eventType?: string | undefined;
     method?: string | undefined;
     toolName?: string | undefined;
     requestId?: string | number | undefined;
+    observation?: {
+        value: string;
+        pid: number;
+        kind: "file_open" | "network_socket";
+        fd?: string | undefined;
+        protocol?: string | undefined;
+    } | undefined;
 }>;
 export declare const ReportSchema: z.ZodObject<{
     ok: z.ZodBoolean;
     sessionId: z.ZodString;
     events: z.ZodNumber;
     toolCalls: z.ZodNumber;
+    observedProcessEvents: z.ZodDefault<z.ZodNumber>;
     estimatedCostUsd: z.ZodNumber;
     findings: z.ZodArray<z.ZodObject<{
         rule: z.ZodString;
@@ -141,6 +201,7 @@ export declare const ReportSchema: z.ZodObject<{
     ok: boolean;
     events: number;
     toolCalls: number;
+    observedProcessEvents: number;
     byTool: Record<string, {
         estimatedCostUsd: number;
         findings: number;
@@ -163,8 +224,10 @@ export declare const ReportSchema: z.ZodObject<{
         findings: number;
         calls: number;
     }>;
+    observedProcessEvents?: number | undefined;
 }>;
 export type Severity = z.infer<typeof SeveritySchema>;
 export type Finding = z.infer<typeof FindingSchema>;
+export type ProcessObservation = z.infer<typeof ObservationSchema>;
 export type AuditEvent = z.infer<typeof AuditEventSchema>;
 export type Report = z.infer<typeof ReportSchema>;

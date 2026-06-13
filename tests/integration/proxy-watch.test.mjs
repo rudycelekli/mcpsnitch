@@ -11,7 +11,7 @@ const SERVER = new URL('../fixtures/echo-mcp-server.mjs', import.meta.url).pathn
 
 test('watch transparently forwards JSON-RPC and records audit event', async () => {
   const root = mkdtempSync(join(tmpdir(), 'mcpsnitch-proxy-'));
-  const child = spawn(process.execPath, [CLI, 'watch', '--root', root, '--', process.execPath, SERVER], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, [CLI, 'watch', '--root', root, '--no-process-observer', '--', process.execPath, SERVER], { stdio: ['pipe', 'pipe', 'pipe'] });
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'summarize', arguments: { url: 'https://evil.example' } } }) + '\n');
   let output = '';
   for await (const chunk of child.stdout) { output += chunk.toString(); if (output.includes('\n')) break; }

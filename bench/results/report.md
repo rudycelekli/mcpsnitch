@@ -1,11 +1,18 @@
 # MCPSnitch benchmark
 
-Seed: mcpsnitch-v0.1-seed
+Seed: mcpsnitch-v0.1.1-honest-harness
 
 | Metric | Raw | MCPSnitch | Delta |
 |---|---:|---:|---:|
-| p99 latency | 0.0018ms | 0.0615ms | 0.0597ms |
+| p99 latency | 0.0018ms | 0.1000ms | 0.0983ms |
 
-Anomaly precision on injected malicious calls: 1.000 (50/50).
+| Detection metric | Value |
+|---|---:|
+| Precision on flagged calls | 1.000 (100/100) |
+| Benign false-positive rate | 0.000 (0/850) |
+| Visible malicious heuristic recall | 1.000 |
+| All malicious heuristic recall (includes encoded evasive cases) | 0.667 |
+
+Honesty note: The JSON-RPC heuristic intentionally does not claim to catch encoded or internal server-side behavior; use process observation for OS-visible sockets/files and treat v0.1.x as observability, not prevention.
 
 Pass: true

@@ -3,3 +3,4 @@ export { appendEvent, loadEvents, summarize, verifyLog, writeReport } from './lo
 export { startHttpServer } from './http/server.js';
 export { watchStdio } from './proxy/stdio.js';
 export type { AuditEvent, Finding, Report } from './schema.js';
+export { parseLsofOutput, eventFromObservation, readProcessObservations, startProcessObserver } from './process/observer.js';

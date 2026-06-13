@@ -1,22 +1,34 @@
 {
   "ok": true,
-  "seed": "mcpsnitch-v0.1-seed",
+  "seed": "mcpsnitch-v0.1.1-honest-harness",
   "node": "v22.19.0",
-  "fixtureHash": "f40409420171099a71c91af0e02748714931062a080e8334537befe3d9f1a7e9",
+  "fixtureHash": "6f14944e9c432876a87259c85a7f5573989de1e5d63bf49b160a3de2b00dd612",
+  "corpus": {
+    "total": 1000,
+    "benign": 850,
+    "malicious": 150,
+    "visibleMalicious": 100,
+    "intentionallyEvasiveMalicious": 50
+  },
   "baseline": {
     "name": "raw JSON.parse forwarding",
-    "p50Ms": 0.000708,
-    "p95Ms": 0.000875,
-    "p99Ms": 0.001833
+    "p50Ms": 0.000709,
+    "p95Ms": 0.000834,
+    "p99Ms": 0.00175
   },
   "mcpsnitch": {
-    "name": "analyzeJsonRpc proxy tap",
-    "p50Ms": 0.00925,
-    "p95Ms": 0.015792,
-    "p99Ms": 0.061541
+    "name": "analyzeJsonRpc JSON-RPC heuristic tap",
+    "p50Ms": 0.010375,
+    "p95Ms": 0.025417,
+    "p99Ms": 0.100042
   },
-  "deltaP99Ms": 0.059708,
+  "deltaP99Ms": 0.098292,
+  "flagged": 100,
+  "truePositives": 100,
+  "falsePositives": 0,
   "anomalyPrecision": 1,
-  "maliciousInjected": 50,
-  "flagged": 50
+  "benignFalsePositiveRate": 0,
+  "visibleHeuristicRecall": 1,
+  "allMaliciousHeuristicRecall": 0.6666666666666666,
+  "honestyNote": "The JSON-RPC heuristic intentionally does not claim to catch encoded or internal server-side behavior; use process observation for OS-visible sockets/files and treat v0.1.x as observability, not prevention."
 }

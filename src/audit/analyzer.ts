@@ -17,12 +17,22 @@ export interface JsonRpcLike {
   error?: unknown;
 }
 
+interface StringHit {
+  value: string;
+  key: string;
+  path: string[];
+}
+
 export function stableJson(value: unknown): string {
   if (value === undefined) return 'null';
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
   const obj = value as Record<string, unknown>;
-  return `{${Object.keys(obj).sort().filter((k) => obj[k] !== undefined).map((k) => `${JSON.stringify(k)}:${stableJson(obj[k])}`).join(',')}}`;
+  return `{${Object.keys(obj)
+    .sort()
+    .filter((k) => obj[k] !== undefined)
+    .map((k) => `${JSON.stringify(k)}:${stableJson(obj[k])}`)
+    .join(',')}}`;
 }
 
 export function sha256Hex(value: string): string {
@@ -34,43 +44,158 @@ export function estimateCostUsd(bytes: number): number {
   return Number(((bytes / 1_000_000) * 0.25).toFixed(9));
 }
 
-function walk(value: unknown, visit: (s: string) => void): void {
-  if (typeof value === 'string') visit(value);
-  else if (Array.isArray(value)) for (const item of value) walk(item, visit);
-  else if (value && typeof value === 'object') for (const item of Object.values(value as Record<string, unknown>)) walk(item, visit);
+function collectStrings(value: unknown, path: string[] = [], out: StringHit[] = []): StringHit[] {
+  if (typeof value === 'string') {
+    out.push({ value, key: path[path.length - 1] ?? '', path });
+  } else if (Array.isArray(value)) {
+    value.forEach((item, i) => collectStrings(item, [...path, String(i)], out));
+  } else if (value && typeof value === 'object') {
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      collectStrings(item, [...path, key], out);
+    }
+  }
+  return out;
 }
 
-export function classifyToolCall(message: JsonRpcLike, raw: string, opts: { costSpikeBytes: number }): { toolName?: string; scopes: string[]; dataFlow: string[]; findings: Finding[] } {
+function toolLooksFilesystem(toolName = ''): boolean {
+  return /(^|[_:-])(read|list|search|grep|glob|file|fs|path|directory|dir)([_:-]|$)/i.test(toolName);
+}
+
+function toolLooksNetwork(toolName = ''): boolean {
+  return /(^|[_:-])(fetch|http|https|url|uri|browser|web|network|download|request)([_:-]|$)/i.test(toolName);
+}
+
+function toolLooksProcess(toolName = ''): boolean {
+  return /(^|[_:-])(exec|bash|shell|spawn|command|process|run)([_:-]|$)/i.test(toolName);
+}
+
+function keyLooksPath(key: string): boolean {
+  return /(^|[_:-])(path|file|filename|filepath|directory|dir|glob|pattern|cwd|root)([_:-]|$)/i.test(key);
+}
+
+function keyLooksUrl(key: string): boolean {
+  const k = key.toLowerCase();
+  return /(^|[_:-])(url|uri|endpoint|webhook|host|hostname|origin|target|destination|dest)([_:-]|$)/i.test(key) ||
+    k.endsWith('url') || k.includes('endpoint') || k.includes('webhook') || k.includes('destination');
+}
+
+function keyLooksSecret(key: string): boolean {
+  const k = key.toLowerCase();
+  return /(^|[_:-])(secret|token|api[_-]?key|password|credential|bearer|authorization|auth)([_:-]|$)/i.test(key) ||
+    k.endsWith('token') || k.endsWith('secret') || k.endsWith('password') || k.includes('apikey') || k.includes('api_key');
+}
+
+function valueLooksPath(value: string): boolean {
+  return /^(?:~\/|\.\.?\/|\/|[A-Za-z]:\\)/.test(value) ||
+    /(^|[\s"'])(?:\/?(?:Users|home|etc|var|tmp)\/|\.env\b|id_rsa\b|\.ssh\/|ssh\/)/i.test(value);
+}
+
+function valueLooksSensitivePath(value: string): boolean {
+  return /(^|\/)(?:\.env(?:\.|$)|id_rsa$|id_ed25519$|known_hosts$|authorized_keys$)|\/etc\/(?:passwd|shadow)\b|\.ssh\//i.test(value);
+}
+
+function valueLooksUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value) || /\bhttps?:\/\/[^\s"'<>]+/i.test(value);
+}
+
+function valueLooksSecret(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length < 8) return false;
+  if (/^(?:true|false|null|undefined|redacted|example|placeholder|password reset)$/i.test(trimmed)) return false;
+  return /(?:sk-[A-Za-z0-9_-]{12,}|ghp_[A-Za-z0-9_]{12,}|AKIA[0-9A-Z]{12,}|[A-Za-z0-9_/-]{20,}\.[A-Za-z0-9_/-]{10,})/.test(trimmed) ||
+    /^[A-Za-z0-9_\-+/=]{24,}$/.test(trimmed);
+}
+
+function hasFinding(findings: Finding[], rule: string): boolean {
+  return findings.some((f) => f.rule === rule);
+}
+
+function addFinding(findings: Finding[], finding: Finding): void {
+  if (!hasFinding(findings, finding.rule)) findings.push(finding);
+}
+
+export function classifyToolCall(
+  message: JsonRpcLike,
+  raw: string,
+  opts: { costSpikeBytes: number },
+): { toolName?: string; scopes: string[]; dataFlow: string[]; findings: Finding[] } {
   const scopes = new Set<string>();
   const dataFlow = new Set<string>();
   const findings: Finding[] = [];
   const method = message.method ?? '';
   const params = (message.params ?? {}) as Record<string, unknown>;
   const toolName = method === 'tools/call' && typeof params.name === 'string' ? params.name : undefined;
-  const haystack: string[] = [method, toolName ?? ''];
-  walk(params, (s) => haystack.push(s));
-  const joined = haystack.join('\n');
+  const args = (params.arguments ?? params.args ?? params.input ?? params) as unknown;
+  const hits = collectStrings(args);
+  const expectedFilesystem = toolLooksFilesystem(toolName);
+  const expectedNetwork = toolLooksNetwork(toolName);
+  const expectedProcess = toolLooksProcess(toolName);
 
-  if (/read|file|fs|path|glob|grep/i.test(joined)) scopes.add('filesystem');
-  if (/write|edit|patch|delete|rm|mv/i.test(joined)) scopes.add('filesystem:write');
-  if (/http|https|fetch|curl|wget|browser|network|url/i.test(joined)) scopes.add('network');
-  if (/exec|bash|shell|spawn|command/i.test(joined)) scopes.add('process');
+  if (expectedFilesystem) scopes.add('filesystem');
+  if (expectedNetwork) scopes.add('network');
+  if (expectedProcess) scopes.add('process');
   if (toolName) dataFlow.add('tool_args_to_server');
-  if (/secret|token|api[_-]?key|password|credential/i.test(joined)) dataFlow.add('possible_secret');
-  if (/https?:\/\//i.test(joined)) dataFlow.add('network_destination');
-  if (/(^|[\s"'])(?:\/)?(?:Users|home|etc|var|tmp)\//i.test(joined) || /\.env\b|id_rsa|ssh\//i.test(joined)) { dataFlow.add('local_path'); scopes.add('filesystem'); }
 
-  if (toolName && scopes.has('filesystem') && !/read|list|search|grep|glob/i.test(toolName)) {
-    findings.push({ rule: 'unexpected_file_access', severity: 'medium', message: `tool ${toolName} carries filesystem-looking inputs`, evidence: { toolName } });
+  for (const hit of hits) {
+    const pathContext = keyLooksPath(hit.key);
+    const urlContext = keyLooksUrl(hit.key);
+    const secretContext = keyLooksSecret(hit.key);
+    const pathLike = valueLooksPath(hit.value);
+    const urlLike = valueLooksUrl(hit.value);
+    const sensitivePath = valueLooksSensitivePath(hit.value);
+
+    if ((pathContext && pathLike) || sensitivePath) {
+      scopes.add('filesystem');
+      dataFlow.add('local_path');
+    }
+    if ((urlContext && urlLike) || (expectedNetwork && urlLike)) {
+      scopes.add('network');
+      dataFlow.add('network_destination');
+    }
+    if (secretContext && valueLooksSecret(hit.value)) {
+      dataFlow.add('possible_secret');
+    }
+    if (sensitivePath) {
+      addFinding(findings, {
+        rule: 'sensitive_file_reference',
+        severity: 'high',
+        message: 'tool call references a sensitive local file path',
+        evidence: { layer: 'jsonrpc_heuristic', key: hit.key, path: hit.path.join('.') },
+      });
+    }
   }
-  if (toolName && scopes.has('network') && !/fetch|http|browser|web|url/i.test(toolName)) {
-    findings.push({ rule: 'unexpected_network_egress', severity: 'high', message: `tool ${toolName} carries URL/network-looking inputs`, evidence: { toolName } });
+
+  if (toolName && scopes.has('filesystem') && !expectedFilesystem) {
+    addFinding(findings, {
+      rule: 'unexpected_file_access',
+      severity: 'medium',
+      message: `tool ${toolName} carries path-like inputs but is not a filesystem tool by name`,
+      evidence: { layer: 'jsonrpc_heuristic', toolName },
+    });
+  }
+  if (toolName && scopes.has('network') && !expectedNetwork) {
+    addFinding(findings, {
+      rule: 'unexpected_network_destination',
+      severity: 'medium',
+      message: `tool ${toolName} carries URL-like destination inputs but is not a network tool by name`,
+      evidence: { layer: 'jsonrpc_heuristic', toolName },
+    });
   }
   if (dataFlow.has('possible_secret')) {
-    findings.push({ rule: 'possible_secret_flow', severity: 'high', message: 'tool call contains secret-like text', evidence: { toolName } });
+    addFinding(findings, {
+      rule: 'possible_secret_flow',
+      severity: 'high',
+      message: 'tool call contains a secret-like value in a secret-like field',
+      evidence: { layer: 'jsonrpc_heuristic', toolName },
+    });
   }
   if (raw.length >= opts.costSpikeBytes) {
-    findings.push({ rule: 'cost_spike', severity: 'medium', message: `message size ${raw.length} bytes exceeds threshold ${opts.costSpikeBytes}`, evidence: { bytes: raw.length, threshold: opts.costSpikeBytes } });
+    addFinding(findings, {
+      rule: 'cost_spike',
+      severity: 'medium',
+      message: `message size ${raw.length} bytes exceeds threshold ${opts.costSpikeBytes}`,
+      evidence: { layer: 'jsonrpc_heuristic', bytes: raw.length, threshold: opts.costSpikeBytes },
+    });
   }
   return { toolName, scopes: [...scopes].sort(), dataFlow: [...dataFlow].sort(), findings };
 }
@@ -78,7 +203,11 @@ export function classifyToolCall(message: JsonRpcLike, raw: string, opts: { cost
 export function analyzeJsonRpc(rawInput: string | JsonRpcLike, opts: AnalyzeOptions = {}): AuditEvent {
   const raw = typeof rawInput === 'string' ? rawInput : JSON.stringify(rawInput);
   let msg: JsonRpcLike = {};
-  try { msg = typeof rawInput === 'string' ? JSON.parse(rawInput) : rawInput; } catch { msg = { method: 'invalid-json' }; }
+  try {
+    msg = typeof rawInput === 'string' ? JSON.parse(rawInput) : rawInput;
+  } catch {
+    msg = { method: 'invalid-json' };
+  }
   const seq = opts.seq ?? 0;
   const prevHash = opts.prevHash ?? '';
   const direction = opts.direction ?? 'client_to_server';
@@ -89,6 +218,8 @@ export function analyzeJsonRpc(rawInput: string | JsonRpcLike, opts: AnalyzeOpti
     seq,
     at: new Date().toISOString(),
     sessionId: opts.sessionId ?? randomUUID(),
+    source: 'jsonrpc_heuristic' as const,
+    eventType: 'jsonrpc_message' as const,
     direction,
     method: msg.method,
     toolName: classified.toolName,

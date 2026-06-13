@@ -62,7 +62,16 @@ export function summarize(events: AuditEvent[], sessionId = events[0]?.sessionId
     byTool[e.toolName].estimatedCostUsd = Number((byTool[e.toolName].estimatedCostUsd + e.estimatedCostUsd).toFixed(9));
     byTool[e.toolName].findings += e.findings.length;
   }
-  return { ok: findings.every((f) => f.severity === 'info' || f.severity === 'low'), sessionId, events: events.length, toolCalls: events.filter((e) => e.method === 'tools/call').length, estimatedCostUsd: Number(events.reduce((a, e) => a + e.estimatedCostUsd, 0).toFixed(9)), findings, byTool };
+  return {
+    ok: findings.every((f) => f.severity === 'info' || f.severity === 'low'),
+    sessionId,
+    events: events.length,
+    toolCalls: events.filter((e) => e.method === 'tools/call').length,
+    observedProcessEvents: events.filter((e) => e.source === 'process_observer').length,
+    estimatedCostUsd: Number(events.reduce((a, e) => a + e.estimatedCostUsd, 0).toFixed(9)),
+    findings,
+    byTool,
+  };
 }
 
 export function writeReport(root = '.'): Report {

@@ -1,6 +1,6 @@
 {
   "name": "mcpsnitch",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A transparent MCP tool-call proxy and audit layer: watch MCP calls, flag suspicious behavior, and emit signed session reports.",
   "type": "module",
   "license": "MIT",

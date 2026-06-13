@@ -5,8 +5,9 @@ import { appendEvent, loadEvents, summarize, verifyLog, writeReport } from '../l
 import { watchStdio } from '../proxy/stdio.js';
 import { startHttpServer } from '../http/server.js';
 import { startMcpServer } from '../mcp/server.js';
+import { eventFromObservation, readProcessObservations } from '../process/observer.js';
 const program = new Command();
-program.name('mcpsnitch').description('Transparent MCP tool-call proxy and audit reporter').version('0.1.0');
+program.name('mcpsnitch').description('Transparent MCP tool-call proxy and audit reporter').version('0.1.1');
 function out(json, data, human) { if (json)
     console.log(JSON.stringify(data, null, 2));
 else
@@ -22,11 +23,11 @@ program.command('analyze').description('Analyze one JSON-RPC message and append 
 catch (e) {
     fail(o.json, 2, e.message);
 } });
-program.command('watch').description('Transparent stdio proxy: mcpsnitch watch -- <mcp-server-command> [args...]').option('--root <path>', 'workspace root', '.').allowUnknownOption(true).argument('[cmd...]').action(async (cmd, o) => { const sep = cmd; if (!sep.length)
-    fail(false, 2, 'missing command: mcpsnitch watch -- <server>'); const code = await watchStdio({ root: o.root, command: sep[0], args: sep.slice(1) }); process.exit(code); });
+program.command('watch').description('Transparent stdio proxy: mcpsnitch watch -- <mcp-server-command> [args...]').option('--root <path>', 'workspace root', '.').option('--no-process-observer', 'disable best-effort lsof process observation').allowUnknownOption(true).argument('[cmd...]').action(async (cmd, o) => { const sep = cmd; if (!sep.length)
+    fail(false, 2, 'missing command: mcpsnitch watch -- <server>'); const code = await watchStdio({ root: o.root, command: sep[0], args: sep.slice(1), processObserver: o.processObserver }); process.exit(code); });
 program.command('report').description('Print current audit report').option('--root <path>', 'workspace root', '.').option('--write', 'write .mcpsnitch/report.json').option('--json', 'machine-readable output').action((o) => { try {
     const report = o.write ? writeReport(o.root) : summarize(loadEvents(o.root));
-    out(o.json, report, () => { console.log(`MCPSnitch report: ${report.toolCalls} tool calls, $${report.estimatedCostUsd.toFixed(9)} estimated, ${report.findings.length} findings`); for (const f of report.findings)
+    out(o.json, report, () => { console.log(`MCPSnitch report: ${report.toolCalls} tool calls, ${report.observedProcessEvents} process observations, $${report.estimatedCostUsd.toFixed(9)} estimated, ${report.findings.length} findings`); for (const f of report.findings)
         console.log(`${f.severity.toUpperCase()} ${f.rule}: ${f.message}`); });
     process.exit(report.ok ? 0 : 1);
 }
@@ -34,6 +35,16 @@ catch (e) {
     fail(o.json, 2, e.message);
 } });
 program.command('verify').description('Verify the audit log hash chain').option('--root <path>', 'workspace root', '.').option('--json', 'machine-readable output').action((o) => { const r = verifyLog(o.root); out(o.json, r, () => console.log(r.ok ? `audit log ok (${r.entries} entries)` : `audit log broken at ${r.firstBreak?.seq}: ${r.firstBreak?.reason}`)); process.exit(r.ok ? 0 : 1); });
+program.command('observe').description('One-shot OS process observation via lsof: records open files/sockets for a PID when available').requiredOption('--pid <pid>', 'child process id to inspect', (v) => Number(v)).option('--root <path>', 'workspace root', '.').option('--json', 'machine-readable output').action(async (o) => { try {
+    const observations = await readProcessObservations(o.pid);
+    const events = observations.map((obs) => appendEvent(eventFromObservation(obs), o.root));
+    out(o.json, { ok: true, observations: observations.length, events }, () => { console.log(`observed ${observations.length} process entries for pid ${o.pid}`); for (const event of events)
+        console.log(`${event.eventType} ${event.observation?.value ?? ''}`); });
+    process.exit(events.some((e) => e.findings.length > 0) ? 1 : 0);
+}
+catch (e) {
+    fail(o.json, 2, e.message);
+} });
 program.command('serve').description('Start local HTTP endpoint server').option('--root <path>', 'workspace root', '.').option('--port <port>', 'port', (v) => Number(v)).option('--json', 'machine-readable startup line').action(async (o) => { const s = await startHttpServer({ root: o.root, port: o.port }); console.log(JSON.stringify({ ok: true, port: s.port, endpoints: ['POST /analyze', 'GET /report', 'POST /report', 'GET /verify'] })); });
 program.command('mcp').description('Start MCPSnitch operator MCP stdio server').action(async () => startMcpServer());
 program.parseAsync().catch((e) => fail(false, 2, e.message));

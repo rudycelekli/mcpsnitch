@@ -16,7 +16,7 @@ test('CLI analyze/report/verify call real endpoints', () => {
   assert.equal(r.status, 1, r.stdout);
   const report = JSON.parse(r.stdout);
   assert.equal(report.toolCalls, 1);
-  assert.ok(report.findings.some((f) => f.rule === 'unexpected_network_egress'));
+  assert.ok(report.findings.some((f) => f.rule === 'unexpected_network_destination'));
   const v = spawnSync(process.execPath, [CLI, 'verify', '--root', root, '--json'], { encoding: 'utf8' });
   assert.equal(v.status, 0, v.stdout);
 });
