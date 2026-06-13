@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { analyzeJsonRpc } from '../audit/analyzer.js';
 import { appendEvent, loadEvents, summarize, verifyLog, writeReport } from '../log/store.js';
+import { listProfiles } from '../policy/profile.js';
 
 async function readJson(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
@@ -27,8 +28,10 @@ export async function startHttpServer(opts: { root?: string; port?: number } = {
         send(res, 200, writeReport(root));
       } else if (req.method === 'GET' && req.url === '/verify') {
         send(res, 200, verifyLog(root));
+      } else if (req.method === 'GET' && req.url === '/profiles') {
+        send(res, 200, { ok: true, profiles: listProfiles() });
       } else {
-        send(res, 404, { ok: false, error: 'not found', endpoints: ['POST /analyze', 'GET /report', 'POST /report', 'GET /verify'] });
+        send(res, 404, { ok: false, error: 'not found', endpoints: ['POST /analyze', 'GET /report', 'POST /report', 'GET /verify', 'GET /profiles'] });
       }
     } catch (e) { send(res, 500, { ok: false, error: (e as Error).message }); }
   });

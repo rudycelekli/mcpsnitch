@@ -11,12 +11,12 @@ npx -y github:rudycelekli/mcpsnitch verify --json
 
 After npm publication, the same commands shorten to `npx mcpsnitch ...`.
 
-> **Honesty line:** MCPSnitch v0.1.x logs and heuristically flags what is visible in MCP JSON-RPC traffic, plus best-effort `lsof` observations of the child process when available. It is **observability and a tripwire, not a sandbox**. A malicious MCP server can evade JSON keyword/structure heuristics, can perform side effects inside its own process, and can hide behavior that is not visible to the proxy or sampled process observer.
+> **Honesty line:** MCPSnitch v0.1.x logs and heuristically flags what is visible in MCP JSON-RPC traffic, plus best-effort sampled `lsof` observations of the child process when available. It is **observability and a tripwire, not a sandbox**. A malicious MCP server can evade JSON keyword/structure heuristics, can perform side effects inside its own process, and can hide behavior that is not visible to the proxy or sampled process observer.
 
 ## What changes
 
 Before: `npx random-mcp-server` is a black box.  
-After: `mcpsnitch watch -- npx random-mcp-server` leaves `.mcpsnitch/audit.jsonl`, `.mcpsnitch/report.json`, heuristic findings, and any OS-observed file/socket events MCPSnitch can see.
+After: `mcpsnitch watch --profile filesystem -- npx random-mcp-server` leaves `.mcpsnitch/audit.jsonl`, `.mcpsnitch/report.json`, heuristic findings, observer status, and any sampled OS-observed file/socket events MCPSnitch can see.
 
 ## Benchmark claim
 
@@ -24,7 +24,7 @@ Current bundled benchmark (`npm run bench`) compares raw JSON parsing/forwarding
 
 | Metric | Raw | MCPSnitch | Delta |
 |---|---:|---:|---:|
-| p99 latency | 0.0018ms | 0.1000ms | 0.0983ms (<5ms pass) |
+| p99 latency | 0.0018ms | 0.0877ms | 0.0860ms (<5ms pass) |
 
 Current generated detection evidence:
 
@@ -38,7 +38,13 @@ Run it locally:
 ```bash
 npm run bench
 cat bench/results/report.md
+npm run bench:false-positive
+cat bench/results/false-positive-report.md
 ```
+
+The false-positive harness is profile-contextual: legitimate GitHub/fetch/search/database network sockets are informational under network-capable profiles, while the same socket under `filesystem`/`generic` remains alerting.
+
+Profile-contextual false-positive harness: **0.000** benign alerting rate (0/6) and **1.000** detection on the included malicious fixtures.
 
 ## Architecture
 
@@ -56,17 +62,19 @@ flowchart LR
 1. You run the MCP server through `mcpsnitch watch -- ...`.
 2. MCPSnitch forwards traffic while tapping line-delimited JSON-RPC messages.
 3. `tools/call` messages are classified for visible scope, data flow, cost, and heuristic findings.
-4. When `lsof` is available, MCPSnitch also samples the child process for actual open files and network sockets.
+4. When `lsof` is available, MCPSnitch samples the child process for open files and network sockets and records the sampling interval. If it is unavailable, MCPSnitch logs a high-severity self-report-only downgrade event.
 5. Events are appended to a hash-chained JSONL audit log.
 6. CLI, HTTP, and MCP endpoints read the same log.
 
 ## CLI
 
 ```bash
-mcpsnitch watch -- <mcp-server-command> [args...]
+mcpsnitch watch --profile filesystem -- <mcp-server-command> [args...]
+mcpsnitch watch --profile fetch -- <network-mcp-server-command> [args...]
 mcpsnitch watch --no-process-observer -- <mcp-server-command> [args...]
 mcpsnitch analyze '<jsonrpc-message>' --json
-mcpsnitch observe --pid <pid> --json
+mcpsnitch observe --pid <pid> --profile github --json
+mcpsnitch profiles --json
 mcpsnitch report --json
 mcpsnitch verify --json
 mcpsnitch serve --port 3333
@@ -83,12 +91,26 @@ HTTP:
 - `GET /report`
 - `POST /report`
 - `GET /verify`
+- `GET /profiles`
 
 MCP operator tools:
 
 - `snitch_analyze`
 - `snitch_report`
 - `snitch_verify_log`
+- `snitch_profiles`
+
+## Built-in profiles
+
+Profiles make process-observer findings contextual instead of noisy:
+
+- `generic` — locked-down default; network is unexpected.
+- `filesystem` — ordinary file reads are expected; network and sensitive files are unexpected.
+- `fetch` — network is expected; sensitive local files are unexpected.
+- `github` — network is expected for GitHub/API behavior; sensitive local files are unexpected.
+- `database` — network is expected for database connections; sensitive local files are unexpected.
+
+List them with `mcpsnitch profiles --json`, `GET /profiles`, or MCP tool `snitch_profiles`.
 
 ## Threat model and limitations
 
@@ -97,14 +119,14 @@ What v0.1.x can honestly do:
 - Transparently proxy line-delimited MCP stdio traffic.
 - Record visible JSON-RPC tool calls and results.
 - Flag structured suspicious inputs such as sensitive paths, URL destination fields on non-network tools, and secret-like values in secret-like fields.
-- Sample the child process with `lsof` to record OS-visible open files and network sockets when the host permits it.
+- Sample the child process with `lsof` to record OS-visible open files and network sockets when the host permits it, with status events that disclose sampled mode or self-report-only downgrade.
 - Verify that the audit log was not edited after the fact.
 
 What v0.1.x does **not** do:
 
 - It does not prevent exfiltration.
 - It does not sandbox syscalls.
-- It does not guarantee detection of encoded destinations, encrypted traffic, short-lived sockets between samples, or behavior inside an opaque MCP server.
+- It does not guarantee detection of encoded destinations, encrypted traffic, short-lived sockets/file opens between samples, or behavior inside an opaque MCP server.
 - Its JSON-RPC analyzer is a heuristic tripwire, not a security boundary.
 - Cost is a deterministic byte-based estimate, not a provider bill.
 

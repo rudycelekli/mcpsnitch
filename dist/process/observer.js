@@ -2,12 +2,17 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { estimateCostUsd, sha256Hex, stableJson } from '../audit/analyzer.js';
+import { resolveProfile } from '../policy/profile.js';
 const execFileP = promisify(execFile);
+export const DEFAULT_PROCESS_OBSERVER_INTERVAL_MS = 250;
 function isSensitivePath(value) {
     return /(^|\/)(?:\.env(?:\.|$)|id_rsa$|id_ed25519$|known_hosts$|authorized_keys$)|\/etc\/(?:passwd|shadow)\b|\.ssh\//i.test(value);
 }
 function isNoiseFile(value) {
     return /\/node_modules\/|\/dist\/|\/usr\/lib\/|\/usr\/bin\/|\/lib(?:64)?\/|\/System\/Library\//.test(value);
+}
+function resolveProfileValue(profile) {
+    return typeof profile === 'string' || profile === undefined ? resolveProfile(profile) : profile;
 }
 /** Parse normal `lsof -nP -p <pid>` output into OS-observed file/socket events. */
 export function parseLsofOutput(output, pidHint) {
@@ -49,24 +54,80 @@ export async function readProcessObservations(pid) {
     const { stdout } = await execFileP('lsof', ['-nP', '-p', String(pid)], { timeout: 2_000, maxBuffer: 1024 * 1024 });
     return parseLsofOutput(stdout, pid);
 }
+export function eventFromObserverStatus(status, opts = {}) {
+    const findings = status.enabled
+        ? [{
+                rule: 'process_observer_sampled_mode',
+                severity: 'info',
+                message: `process observer enabled in sampled lsof mode (${status.samplingIntervalMs}ms interval)`,
+                evidence: { layer: 'process_observer', sampled: true, samplingIntervalMs: status.samplingIntervalMs, profile: status.profile },
+            }]
+        : [{
+                rule: 'process_observer_unavailable',
+                severity: 'high',
+                message: 'OS-level process observation unavailable; running in self-report-only mode that a malicious server can evade',
+                evidence: { layer: 'process_observer', reason: status.reason ?? 'unknown', profile: status.profile },
+            }];
+    const sansHash = {
+        v: 1,
+        seq: opts.seq ?? 0,
+        at: new Date().toISOString(),
+        sessionId: opts.sessionId ?? randomUUID(),
+        source: 'process_observer',
+        eventType: 'process/observer_status',
+        direction: 'server_to_client',
+        method: 'process/observer_status',
+        bytesIn: 0,
+        bytesOut: 0,
+        estimatedCostUsd: estimateCostUsd(0),
+        scopes: [],
+        dataFlow: status.enabled ? ['sampled_process_observation'] : ['self_report_only_mode'],
+        findings,
+        prevHash: opts.prevHash ?? '',
+    };
+    return { ...sansHash, hash: sha256Hex(stableJson(sansHash)) };
+}
 export function eventFromObservation(observation, opts = {}) {
+    const profile = resolveProfileValue(opts.profile);
+    const interval = opts.samplingIntervalMs ?? DEFAULT_PROCESS_OBSERVER_INTERVAL_MS;
     const findings = [];
     const scopes = observation.kind === 'network_socket' ? ['network'] : ['filesystem'];
     const dataFlow = observation.kind === 'network_socket' ? ['observed_network_socket'] : ['observed_file_open'];
+    const commonEvidence = { layer: 'process_observer', value: observation.value, fd: observation.fd, profile: profile.name, sampled: true, samplingIntervalMs: interval };
     if (observation.kind === 'network_socket') {
-        findings.push({
-            rule: 'observed_network_connection',
-            severity: 'medium',
-            message: 'child process has an OS-observed network socket',
-            evidence: { layer: 'process_observer', value: observation.value, fd: observation.fd },
-        });
+        if (profile.allowNetwork) {
+            findings.push({
+                rule: 'observed_expected_network_connection',
+                severity: 'info',
+                message: 'child process has an OS-observed network socket allowed by the active server profile',
+                evidence: commonEvidence,
+            });
+        }
+        else {
+            findings.push({
+                rule: 'observed_unexpected_network_connection',
+                severity: 'medium',
+                message: 'child process has an OS-observed network socket not allowed by the active server profile',
+                evidence: commonEvidence,
+            });
+        }
     }
     if (observation.kind === 'file_open' && isSensitivePath(observation.value)) {
         findings.push({
-            rule: 'observed_sensitive_file_open',
-            severity: 'high',
-            message: 'child process has an OS-observed sensitive file open',
-            evidence: { layer: 'process_observer', value: observation.value, fd: observation.fd },
+            rule: profile.allowSensitiveFiles ? 'observed_expected_sensitive_file_open' : 'observed_sensitive_file_open',
+            severity: profile.allowSensitiveFiles ? 'info' : 'high',
+            message: profile.allowSensitiveFiles
+                ? 'child process has an OS-observed sensitive file open allowed by the active server profile'
+                : 'child process has an OS-observed sensitive file open not allowed by the active server profile',
+            evidence: commonEvidence,
+        });
+    }
+    else if (observation.kind === 'file_open' && !profile.allowFileRead && !isNoiseFile(observation.value)) {
+        findings.push({
+            rule: 'observed_unexpected_file_open',
+            severity: 'medium',
+            message: 'child process has an OS-observed file open not allowed by the active server profile',
+            evidence: commonEvidence,
         });
     }
     const sansHash = {
@@ -90,9 +151,13 @@ export function eventFromObservation(observation, opts = {}) {
     return { ...sansHash, hash: sha256Hex(stableJson(sansHash)) };
 }
 export async function startProcessObserver(pid, opts) {
+    const intervalMs = opts.intervalMs ?? DEFAULT_PROCESS_OBSERVER_INTERVAL_MS;
+    const profile = resolveProfileValue(opts.profile);
     const available = await lsofAvailable();
     if (!available) {
-        opts.onStatus?.({ ok: true, enabled: false, reason: 'lsof not found; process observer disabled' });
+        const status = { ok: true, enabled: false, reason: 'lsof not found; process observer disabled', samplingIntervalMs: intervalMs, mode: 'self_report_only', profile: profile.name };
+        opts.onStatus?.(status);
+        opts.onEvent(eventFromObserverStatus(status, { sessionId: opts.sessionId }));
         return { enabled: false, stop: () => undefined };
     }
     const seen = new Set();
@@ -110,20 +175,23 @@ export async function startProcessObserver(pid, opts) {
                 if (seen.has(key))
                     continue;
                 seen.add(key);
-                opts.onEvent(eventFromObservation(obs, { sessionId }));
+                opts.onEvent(eventFromObservation(obs, { sessionId, profile, samplingIntervalMs: intervalMs }));
             }
         }
         catch (e) {
             const err = e;
             // lsof exits non-zero when the process has already ended; that is normal at shutdown.
-            if (err.code === 'ENOENT')
-                opts.onStatus?.({ ok: true, enabled: false, reason: 'lsof disappeared; process observer disabled' });
+            if (err.code === 'ENOENT') {
+                opts.onStatus?.({ ok: true, enabled: false, reason: 'lsof disappeared; process observer disabled', samplingIntervalMs: intervalMs, mode: 'self_report_only', profile: profile.name });
+            }
         }
     };
-    const interval = setInterval(() => void poll(), opts.intervalMs ?? 250);
+    const status = { ok: true, enabled: true, samplingIntervalMs: intervalMs, mode: 'sampled_lsof', profile: profile.name };
+    const interval = setInterval(() => void poll(), intervalMs);
     interval.unref?.();
+    opts.onEvent(eventFromObserverStatus(status, { sessionId }));
     void poll();
-    opts.onStatus?.({ ok: true, enabled: true });
+    opts.onStatus?.(status);
     return { enabled: true, stop: () => { stopped = true; clearInterval(interval); } };
 }
 //# sourceMappingURL=observer.js.map

@@ -35,5 +35,8 @@ test('HTTP server exposes POST /analyze and GET /report', async () => {
   assert.equal(report.toolCalls, 1);
   const verifyRes = await fetch(`http://127.0.0.1:${port}/verify`);
   assert.equal((await verifyRes.json()).ok, true);
+  const profilesRes = await fetch(`http://127.0.0.1:${port}/profiles`);
+  const profiles = await profilesRes.json();
+  assert.ok(profiles.profiles.some((p) => p.name === 'github'));
   child.kill('SIGTERM');
 });

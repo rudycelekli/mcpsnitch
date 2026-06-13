@@ -1,0 +1,114 @@
+{
+  "ok": true,
+  "seed": "mcpsnitch-v0.1.2-profiled-benign-corpus",
+  "fixtureHash": "45cc895f34113b8dd6215e1e4ebf5ec89b207923baf03203bf8561205dfcbcd7",
+  "corpus": {
+    "benignServers": 6,
+    "maliciousFixtures": 2,
+    "events": 15
+  },
+  "benignFalsePositiveRate": 0,
+  "benignAlertingServers": [],
+  "maliciousDetectionRate": 1,
+  "maliciousAlertingServers": [
+    "filesystem-unexpected-network",
+    "generic-sensitive-file"
+  ],
+  "byServer": [
+    {
+      "server": "filesystem",
+      "label": "benign",
+      "profile": "filesystem",
+      "events": 4,
+      "alertingEvents": 0,
+      "findings": []
+    },
+    {
+      "server": "github",
+      "label": "benign",
+      "profile": "github",
+      "events": 2,
+      "alertingEvents": 0,
+      "findings": [
+        {
+          "rule": "observed_expected_network_connection",
+          "severity": "info"
+        }
+      ]
+    },
+    {
+      "server": "fetch",
+      "label": "benign",
+      "profile": "fetch",
+      "events": 2,
+      "alertingEvents": 0,
+      "findings": [
+        {
+          "rule": "observed_expected_network_connection",
+          "severity": "info"
+        }
+      ]
+    },
+    {
+      "server": "brave-search",
+      "label": "benign",
+      "profile": "fetch",
+      "events": 2,
+      "alertingEvents": 0,
+      "findings": [
+        {
+          "rule": "observed_expected_network_connection",
+          "severity": "info"
+        }
+      ]
+    },
+    {
+      "server": "database",
+      "label": "benign",
+      "profile": "database",
+      "events": 2,
+      "alertingEvents": 0,
+      "findings": [
+        {
+          "rule": "observed_expected_network_connection",
+          "severity": "info"
+        }
+      ]
+    },
+    {
+      "server": "prose-tool",
+      "label": "benign",
+      "profile": "generic",
+      "events": 1,
+      "alertingEvents": 0,
+      "findings": []
+    },
+    {
+      "server": "filesystem-unexpected-network",
+      "label": "malicious",
+      "profile": "filesystem",
+      "events": 1,
+      "alertingEvents": 1,
+      "findings": [
+        {
+          "rule": "observed_unexpected_network_connection",
+          "severity": "medium"
+        }
+      ]
+    },
+    {
+      "server": "generic-sensitive-file",
+      "label": "malicious",
+      "profile": "generic",
+      "events": 1,
+      "alertingEvents": 1,
+      "findings": [
+        {
+          "rule": "observed_sensitive_file_open",
+          "severity": "high"
+        }
+      ]
+    }
+  ],
+  "note": "This is a deterministic representative benign corpus harness. It measures profile-contextual false positives without requiring external API credentials; live-server dogfood should extend it, not replace it."
+}

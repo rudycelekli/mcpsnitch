@@ -15,11 +15,14 @@ test('operator MCP server lists and calls snitch tools', async () => {
   await client.connect(transport);
   const list = await client.listTools();
   assert.ok(list.tools.some((t) => t.name === 'snitch_analyze'));
+  assert.ok(list.tools.some((t) => t.name === 'snitch_profiles'));
   const call = await client.callTool({ name: 'snitch_analyze', arguments: { root, message: JSON.stringify({ id: 9, method: 'tools/call', params: { name: 'fetch', arguments: { url: 'https://example.com' } } }) } });
   const data = JSON.parse(call.content[0].text);
   assert.equal(data.ok, true);
   const report = await client.callTool({ name: 'snitch_report', arguments: { root } });
   const reportData = JSON.parse(report.content[0].text);
   assert.equal(reportData.toolCalls, 1);
+  const profiles = await client.callTool({ name: 'snitch_profiles', arguments: {} });
+  assert.ok(JSON.parse(profiles.content[0].text).profiles.some((p) => p.name === 'filesystem'));
   await client.close();
 });

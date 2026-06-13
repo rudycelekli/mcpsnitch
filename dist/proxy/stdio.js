@@ -31,12 +31,23 @@ export async function watchStdio(opts) {
     if (opts.processObserver !== false && child.pid) {
         void startProcessObserver(child.pid, {
             sessionId,
+            profile: opts.profile,
+            intervalMs: opts.observerIntervalMs,
             onEvent: (event) => appendEvent(event, opts.root),
             onStatus: (status) => {
-                if (!status.enabled && status.reason)
-                    process.stderr.write(`mcpsnitch: ${status.reason}\n`);
+                if (!status.enabled) {
+                    process.stderr.write(`MCPSNITCH WARNING: OS-level process observation unavailable (${status.reason ?? 'unknown'}). ` +
+                        'Running in self-report-only mode; a malicious MCP server can evade JSON-RPC heuristics.\n');
+                }
+                else {
+                    process.stderr.write(`mcpsnitch: process observer enabled (${status.mode}, ${status.samplingIntervalMs}ms sampling, profile=${status.profile}). ` +
+                        'Short-lived file/socket activity between samples can be missed.\n');
+                }
             },
         }).then((handle) => { observer = handle; });
+    }
+    else if (opts.processObserver === false) {
+        process.stderr.write('MCPSNITCH WARNING: process observer disabled by --no-process-observer; running in self-report-only mode.\n');
     }
     return await new Promise((resolve) => child.on('close', (code) => {
         observer?.stop();

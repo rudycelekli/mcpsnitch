@@ -1,6 +1,6 @@
 {
   "name": "mcpsnitch",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A transparent MCP tool-call proxy and audit layer: watch MCP calls, flag suspicious behavior, and emit signed session reports.",
   "type": "module",
   "license": "MIT",
@@ -41,8 +41,9 @@
     "test": "node --test tests/unit/*.test.mjs",
     "test:integration": "node --test tests/integration/*.test.mjs",
     "bench": "node bench/run.mjs",
-    "verify": "npm run build && npm test && npm run test:integration && npm run bench && node dist/cli/index.js verify --root . --json",
-    "smoke:tarball": "node scripts/tarball-smoke.mjs"
+    "verify": "npm run build && npm test && npm run test:integration && npm run bench && npm run bench:false-positive && node dist/cli/index.js verify --root . --json",
+    "smoke:tarball": "node scripts/tarball-smoke.mjs",
+    "bench:false-positive": "node bench/false-positive.mjs"
   },
   "keywords": [
     "mcp",
