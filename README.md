@@ -4,6 +4,7 @@
 
 ```bash
 # Works now from the public GitHub release/package source:
+npx -y github:rudycelekli/mcpsnitch run -- <mcp-server-command> [args...]
 npx -y github:rudycelekli/mcpsnitch analyze '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"summarize","arguments":{"destinationUrl":"https://example.com","token":"sk-abcdefghijklmnopqrstuvwxyz"}}}' --json
 npx -y github:rudycelekli/mcpsnitch report --json
 npx -y github:rudycelekli/mcpsnitch verify --json
@@ -16,7 +17,7 @@ After npm publication, the same commands shorten to `npx mcpsnitch ...`.
 ## What changes
 
 Before: `npx random-mcp-server` is a black box.  
-After: `mcpsnitch watch --profile filesystem -- npx random-mcp-server` leaves `.mcpsnitch/audit.jsonl`, `.mcpsnitch/report.json`, heuristic findings, observer status, and any sampled OS-observed file/socket events MCPSnitch can see.
+After: `mcpsnitch run -- npx random-mcp-server` silently forwards clean traffic, auto-matches a built-in profile when it recognizes the server, writes `.mcpsnitch/audit.jsonl`, and prints a single actionable stderr alert only when something medium/high crosses the line. `mcpsnitch watch` remains available as the more verbose diagnostic proxy.
 
 ## Benchmark claim
 
@@ -24,7 +25,7 @@ Current bundled benchmark (`npm run bench`) compares raw JSON parsing/forwarding
 
 | Metric | Raw | MCPSnitch | Delta |
 |---|---:|---:|---:|
-| p99 latency | 0.0018ms | 0.1011ms | 0.0993ms (<5ms pass) |
+| p99 latency | 0.0022ms | 0.1039ms | 0.1017ms (<5ms pass) |
 
 Current generated detection evidence:
 
@@ -54,7 +55,7 @@ Live process-observer harness: **0.000** benign alerting rate and **1.000** mali
 
 ```mermaid
 flowchart LR
-  A["MCP client"] --> B["mcpsnitch watch proxy"]
+  A["MCP client"] --> B["mcpsnitch run/watch proxy"]
   B --> C["MCP server child process"]
   B --> D["JSON-RPC heuristic analyzer"]
   C --> G["best-effort lsof process observer"]
@@ -63,16 +64,29 @@ flowchart LR
   E --> F["report / verify / MCP tools / HTTP routes"]
 ```
 
-1. You run the MCP server through `mcpsnitch watch -- ...`.
+1. You run the MCP server through `mcpsnitch run -- ...` (silent when clean) or `mcpsnitch watch -- ...` (diagnostic).
 2. MCPSnitch forwards traffic while tapping line-delimited JSON-RPC messages.
 3. `tools/call` messages are classified for visible scope, data flow, cost, and heuristic findings.
 4. When `lsof` is available, MCPSnitch samples the child process for open files and network sockets and records the sampling interval. If it is unavailable, MCPSnitch logs a high-severity self-report-only downgrade event.
 5. Events are appended to a hash-chained JSONL audit log.
 6. CLI, HTTP, and MCP endpoints read the same log.
 
+## Product behavior
+
+`mcpsnitch run -- <mcp-server-command> [args...]` is the default adoption path. It is designed for one-line MCP config wrappers:
+
+- **Clean session:** stdout remains only the proxied MCP protocol; MCPSnitch emits no stderr of its own (wrapped server stderr may still pass through); audit evidence is still appended.
+- **Real violation or trust downgrade:** stderr gets exactly the kind of line an engineer can act on, for example `MCPSNITCH ALERT severity=medium rule=observed_unexpected_network_connection source=process_observer profile="filesystem" observed="..." action="..."`.
+- **Profiles:** `--profile auto` is the default and recognizes common GitHub, filesystem, fetch/search/browser, and database server command names. Use `--profile <builtin-or-json-path>` for explicit or long-tail servers.
+- **Honesty:** disabling or losing the process observer records and alerts a self-report-only downgrade because JSON-RPC-only monitoring is easier for a malicious server to evade.
+
 ## CLI
 
 ```bash
+mcpsnitch run -- <mcp-server-command> [args...]
+mcpsnitch run --profile auto -- <mcp-server-command> [args...]
+mcpsnitch run --profile filesystem -- <filesystem-mcp-server-command> [args...]
+mcpsnitch run --verbose -- <mcp-server-command> [args...]
 mcpsnitch watch --profile filesystem -- <mcp-server-command> [args...]
 mcpsnitch watch --profile fetch -- <network-mcp-server-command> [args...]
 mcpsnitch watch --no-process-observer -- <mcp-server-command> [args...]
@@ -87,12 +101,13 @@ mcpsnitch serve --port 3333
 mcpsnitch mcp
 ```
 
-Exit codes: `0` ok, `1` findings or broken verification, `2` precondition/config error.
+Exit codes: `0` ok, `1` findings or broken verification for reporting/verification commands, `2` precondition/config error. `run` and `watch` preserve the wrapped child process exit code so they can stay transparent in MCP client configs; use `report` in CI when findings should fail a build.
 
 ## Endpoint surface
 
 HTTP:
 
+- `GET /version`
 - `POST /analyze`
 - `GET /report`
 - `POST /report`
@@ -116,7 +131,7 @@ Profiles make process-observer findings contextual instead of noisy:
 - `github` — network is expected for GitHub/API behavior; sensitive local files are unexpected.
 - `database` — network is expected for database connections; sensitive local files are unexpected.
 
-List them with `mcpsnitch profiles --json`, `GET /profiles`, or MCP tool `snitch_profiles`. For long-tail servers, create a custom JSON profile with `mcpsnitch profile:init`, use a profile path in `--profile ./profile.json`, or draft one from an audit log with `mcpsnitch profile:learn` and review it before use. Sensitive-file permission is never auto-learned.
+List them with `mcpsnitch profiles --json`, `GET /profiles`, or MCP tool `snitch_profiles`. `mcpsnitch run` and `watch` default to `--profile auto`, which infers these profiles from common server command names (`server-github`, `server-filesystem`, search/fetch/browser servers, and database servers). For long-tail servers, create a custom JSON profile with `mcpsnitch profile:init`, use a profile path in `--profile ./profile.json`, or draft one from an audit log with `mcpsnitch profile:learn` and review it before use. Sensitive-file permission is never auto-learned.
 
 ## Threat model and limitations
 

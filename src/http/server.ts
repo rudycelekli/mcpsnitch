@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { analyzeJsonRpc } from '../audit/analyzer.js';
 import { appendEvent, loadEvents, summarize, verifyLog, writeReport } from '../log/store.js';
 import { listProfiles } from '../policy/profile.js';
+import { MCPSNITCH_VERSION } from '../version.js';
 
 async function readJson(req: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
@@ -9,6 +10,8 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
   const raw = Buffer.concat(chunks).toString('utf8') || '{}';
   try { return JSON.parse(raw); } catch { return raw; }
 }
+const ENDPOINTS = ['GET /version', 'POST /analyze', 'GET /report', 'POST /report', 'GET /verify', 'GET /profiles'];
+
 function send(res: ServerResponse, code: number, data: unknown): void {
   res.writeHead(code, { 'content-type': 'application/json' });
   res.end(JSON.stringify(data, null, 2));
@@ -18,7 +21,9 @@ export async function startHttpServer(opts: { root?: string; port?: number } = {
   const root = opts.root ?? '.';
   const server = createServer(async (req, res) => {
     try {
-      if (req.method === 'POST' && req.url === '/analyze') {
+      if (req.method === 'GET' && req.url === '/version') {
+        send(res, 200, { ok: true, name: 'mcpsnitch', version: MCPSNITCH_VERSION, endpoints: ENDPOINTS });
+      } else if (req.method === 'POST' && req.url === '/analyze') {
         const body = await readJson(req);
         const event = appendEvent(analyzeJsonRpc(typeof body === 'string' ? body : JSON.stringify(body)), root);
         send(res, 200, { ok: true, event });
@@ -31,7 +36,7 @@ export async function startHttpServer(opts: { root?: string; port?: number } = {
       } else if (req.method === 'GET' && req.url === '/profiles') {
         send(res, 200, { ok: true, profiles: listProfiles() });
       } else {
-        send(res, 404, { ok: false, error: 'not found', endpoints: ['POST /analyze', 'GET /report', 'POST /report', 'GET /verify', 'GET /profiles'] });
+        send(res, 404, { ok: false, error: 'not found', endpoints: ENDPOINTS });
       }
     } catch (e) { send(res, 500, { ok: false, error: (e as Error).message }); }
   });

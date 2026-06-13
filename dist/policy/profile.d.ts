@@ -35,6 +35,8 @@ export declare function writeProfile(path: string, profile: ServerProfile): Serv
 export declare function makeProfile(opts: Partial<ServerProfile> & {
     name: string;
 }): ServerProfile;
+export declare function inferProfileFromCommand(command: string, args?: string[]): string;
+export declare function resolveProfileForCommand(spec: string | undefined, command: string, args?: string[]): ServerProfile;
 export declare function learnProfileFromEvents(events: AuditEvent[], opts: {
     name: string;
     description?: string;

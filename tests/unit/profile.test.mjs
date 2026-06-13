@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { makeProfile, writeProfile, resolveProfile, learnProfileFromEvents, eventFromObservation } from '../../dist/index.js';
+import { makeProfile, writeProfile, resolveProfile, resolveProfileForCommand, inferProfileFromCommand, learnProfileFromEvents, eventFromObservation } from '../../dist/index.js';
 
 test('custom profile files can be declared and resolved', () => {
   const root = mkdtempSync(join(tmpdir(), 'mcpsnitch-profile-'));
@@ -27,4 +27,20 @@ test('learned profiles infer network/file behavior but never sensitive-file perm
   assert.equal(profile.allowSensitiveFiles, false);
   assert.ok(profile.expectedNetworkDestinations.some((value) => value.includes('203.0.113.7')));
   assert.ok(profile.expectedFilePaths.some((value) => value.endsWith('/.env')));
+});
+
+
+test('auto profile inference maps common MCP server commands to contextual profiles', () => {
+  assert.equal(inferProfileFromCommand('npx', ['-y', '@modelcontextprotocol/server-github']), 'github');
+  assert.equal(inferProfileFromCommand('uvx', ['mcp-server-git']), 'generic');
+  assert.equal(inferProfileFromCommand('npx', ['@modelcontextprotocol/server-filesystem', '/tmp']), 'filesystem');
+  assert.equal(inferProfileFromCommand('npx', ['brave-search-mcp']), 'fetch');
+  assert.equal(inferProfileFromCommand('node', ['postgres-mcp-server.js']), 'database');
+  assert.equal(inferProfileFromCommand('python', ['custom_server.py']), 'generic');
+});
+
+test('auto profile resolution returns the inferred built-in profile for a command', () => {
+  assert.equal(resolveProfileForCommand('auto', 'npx', ['@modelcontextprotocol/server-github']).name, 'github');
+  assert.equal(resolveProfileForCommand(undefined, 'npx', ['server-filesystem']).name, 'filesystem');
+  assert.equal(resolveProfileForCommand('fetch', 'npx', ['server-filesystem']).name, 'fetch');
 });

@@ -59,6 +59,8 @@ function readProfileFile(path) {
 }
 /** Resolve a built-in profile name or a JSON profile file path. */
 export function resolveProfile(spec = 'generic') {
+    if (spec === 'auto')
+        return BUILTIN_PROFILES.generic;
     if (BUILTIN_PROFILES[spec])
         return BUILTIN_PROFILES[spec];
     const path = resolve(spec);
@@ -86,6 +88,22 @@ export function makeProfile(opts) {
         allowSensitiveFiles: false,
         ...opts,
     });
+}
+export function inferProfileFromCommand(command, args = []) {
+    const joined = [command, ...args].join(' ').toLowerCase();
+    if (/github|gh-|gh_|@modelcontextprotocol\/server-github/.test(joined))
+        return 'github';
+    if (/brave|search|fetch|browser|puppeteer|playwright|firecrawl|web/.test(joined))
+        return 'fetch';
+    if (/filesystem|file-system|fs-server|server-filesystem|read-file|read_file/.test(joined))
+        return 'filesystem';
+    if (/postgres|postgresql|mysql|sqlite|database|mongodb|redis|supabase/.test(joined))
+        return 'database';
+    return 'generic';
+}
+export function resolveProfileForCommand(spec, command, args = []) {
+    const resolvedSpec = !spec || spec === 'auto' ? inferProfileFromCommand(command, args) : spec;
+    return resolveProfile(resolvedSpec);
 }
 export function learnProfileFromEvents(events, opts) {
     const hasNetwork = events.some((event) => event.source === 'process_observer' && event.observation?.kind === 'network_socket');

@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { analyzeJsonRpc } from '../audit/analyzer.js';
 import { appendEvent, loadEvents, summarize, verifyLog, writeReport } from '../log/store.js';
 import { listProfiles } from '../policy/profile.js';
+import { MCPSNITCH_VERSION } from '../version.js';
 async function readJson(req) {
     const chunks = [];
     for await (const chunk of req)
@@ -14,6 +15,7 @@ async function readJson(req) {
         return raw;
     }
 }
+const ENDPOINTS = ['GET /version', 'POST /analyze', 'GET /report', 'POST /report', 'GET /verify', 'GET /profiles'];
 function send(res, code, data) {
     res.writeHead(code, { 'content-type': 'application/json' });
     res.end(JSON.stringify(data, null, 2));
@@ -22,7 +24,10 @@ export async function startHttpServer(opts = {}) {
     const root = opts.root ?? '.';
     const server = createServer(async (req, res) => {
         try {
-            if (req.method === 'POST' && req.url === '/analyze') {
+            if (req.method === 'GET' && req.url === '/version') {
+                send(res, 200, { ok: true, name: 'mcpsnitch', version: MCPSNITCH_VERSION, endpoints: ENDPOINTS });
+            }
+            else if (req.method === 'POST' && req.url === '/analyze') {
                 const body = await readJson(req);
                 const event = appendEvent(analyzeJsonRpc(typeof body === 'string' ? body : JSON.stringify(body)), root);
                 send(res, 200, { ok: true, event });
@@ -40,7 +45,7 @@ export async function startHttpServer(opts = {}) {
                 send(res, 200, { ok: true, profiles: listProfiles() });
             }
             else {
-                send(res, 404, { ok: false, error: 'not found', endpoints: ['POST /analyze', 'GET /report', 'POST /report', 'GET /verify', 'GET /profiles'] });
+                send(res, 404, { ok: false, error: 'not found', endpoints: ENDPOINTS });
             }
         }
         catch (e) {

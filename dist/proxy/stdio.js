@@ -2,7 +2,8 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { appendEvent } from '../log/store.js';
 import { analyzeJsonRpc } from '../audit/analyzer.js';
-import { startProcessObserver } from '../process/observer.js';
+import { eventFromObserverStatus, startProcessObserver } from '../process/observer.js';
+import { resolveProfileForCommand } from '../policy/profile.js';
 function installLineTap(stream, onLine) {
     let buf = '';
     stream.on('data', (chunk) => {
@@ -18,12 +19,56 @@ function installLineTap(stream, onLine) {
         }
     });
 }
+export function alertingFindings(event) {
+    return event.findings.filter((f) => f.severity === 'medium' || f.severity === 'high');
+}
+function quoteAlertValue(value) {
+    return JSON.stringify(String(value ?? 'n/a').replace(/[\r\n]+/g, ' '));
+}
+export function formatActionableAlert(event) {
+    const findings = alertingFindings(event);
+    if (findings.length === 0)
+        return '';
+    const primary = findings[0];
+    const profile = quoteAlertValue(primary.evidence.profile ?? 'n/a');
+    const observed = event.observation?.value ? ` observed=${quoteAlertValue(event.observation.value)}` : '';
+    const tool = event.toolName ? ` tool=${quoteAlertValue(event.toolName)}` : '';
+    const reason = String(primary.evidence.reason ?? '');
+    const evidenceLayer = String(primary.evidence.layer ?? event.source ?? 'jsonrpc_heuristic');
+    const action = primary.rule === 'process_observer_unavailable'
+        ? reason.includes('spawn failed')
+            ? 'fix the wrapped command or PATH; no MCP server process started'
+            : 'install lsof or run on a host with process observation; treat this session as self-report-only'
+        : evidenceLayer === 'process_observer' && primary.rule.includes('network')
+            ? 'verify this server should have network access; if expected, choose/learn a network-capable profile; otherwise disable or isolate the server'
+            : evidenceLayer === 'jsonrpc_heuristic' && primary.rule.includes('network')
+                ? 'inspect the tool arguments and rename/use an explicit network tool if this destination is intended; profiles only contextualize OS process observations'
+                : primary.rule.includes('secret')
+                    ? 'treat the value as exposed, rotate if real, and inspect why this tool received secret-like data'
+                    : primary.rule.includes('sensitive_file') || primary.rule.includes('file')
+                        ? 'verify this server should read the file; if not, revoke/isolate the server and inspect the audit log'
+                        : 'inspect the audit log and server profile';
+    return `MCPSNITCH ALERT severity=${primary.severity} rule=${primary.rule} source=${event.source ?? 'jsonrpc_heuristic'} profile=${profile}${tool}${observed} action=${quoteAlertValue(action)}\n`;
+}
+function recordAndMaybeAlert(event, root, quiet) {
+    const appended = appendEvent(event, root);
+    const alert = formatActionableAlert(appended);
+    if (alert)
+        process.stderr.write(alert);
+    else if (!quiet && appended.findings.some((f) => f.rule === 'process_observer_sampled_mode')) {
+        process.stderr.write(`mcpsnitch: process observer enabled (${appended.findings[0].evidence.samplingIntervalMs}ms sampled mode, profile=${appended.findings[0].evidence.profile}).\n`);
+    }
+}
 export async function watchStdio(opts) {
     const sessionId = opts.sessionId ?? randomUUID();
-    const child = spawn(opts.command, opts.args ?? [], { stdio: ['pipe', 'pipe', 'inherit'] });
+    const args = opts.args ?? [];
+    const profile = resolveProfileForCommand(opts.profile ?? 'auto', opts.command, args);
+    const quiet = opts.quiet ?? false;
+    const child = spawn(opts.command, args, { stdio: ['pipe', 'pipe', 'inherit'] });
     let observer;
-    installLineTap(process.stdin, (line) => appendEvent(analyzeJsonRpc(line, { sessionId, direction: 'client_to_server' }), opts.root));
-    installLineTap(child.stdout, (line) => appendEvent(analyzeJsonRpc(line, { sessionId, direction: 'server_to_client' }), opts.root));
+    let childClosed = false;
+    installLineTap(process.stdin, (line) => recordAndMaybeAlert(analyzeJsonRpc(line, { sessionId, direction: 'client_to_server' }), opts.root, quiet));
+    installLineTap(child.stdout, (line) => recordAndMaybeAlert(analyzeJsonRpc(line, { sessionId, direction: 'server_to_client' }), opts.root, quiet));
     process.stdin.pipe(child.stdin);
     child.stdout.pipe(process.stdout);
     // Start process observation after the transparent pipe is already flowing so
@@ -31,27 +76,60 @@ export async function watchStdio(opts) {
     if (opts.processObserver !== false && child.pid) {
         void startProcessObserver(child.pid, {
             sessionId,
-            profile: opts.profile,
+            profile,
             intervalMs: opts.observerIntervalMs,
-            onEvent: (event) => appendEvent(event, opts.root),
-            onStatus: (status) => {
-                if (!status.enabled) {
-                    process.stderr.write(`MCPSNITCH WARNING: OS-level process observation unavailable (${status.reason ?? 'unknown'}). ` +
-                        'Running in self-report-only mode; a malicious MCP server can evade JSON-RPC heuristics.\n');
-                }
-                else {
-                    process.stderr.write(`mcpsnitch: process observer enabled (${status.mode}, ${status.samplingIntervalMs}ms sampling, profile=${status.profile}). ` +
-                        'Short-lived file/socket activity between samples can be missed.\n');
-                }
-            },
-        }).then((handle) => { observer = handle; });
+            onEvent: (event) => recordAndMaybeAlert(event, opts.root, quiet),
+            onStatus: () => undefined,
+        }).then((handle) => {
+            observer = handle;
+            if (childClosed)
+                handle.stop();
+        }).catch((e) => {
+            const status = {
+                ok: true,
+                enabled: false,
+                reason: `process observer failed: ${e.message}`,
+                samplingIntervalMs: opts.observerIntervalMs ?? 250,
+                mode: 'self_report_only',
+                profile: profile.name,
+            };
+            recordAndMaybeAlert(eventFromObserverStatus(status, { sessionId }), opts.root, quiet);
+        });
     }
     else if (opts.processObserver === false) {
-        process.stderr.write('MCPSNITCH WARNING: process observer disabled by --no-process-observer; running in self-report-only mode.\n');
+        const status = {
+            ok: true,
+            enabled: false,
+            reason: 'disabled by --no-process-observer',
+            samplingIntervalMs: opts.observerIntervalMs ?? 250,
+            mode: 'self_report_only',
+            profile: profile.name,
+        };
+        recordAndMaybeAlert(eventFromObserverStatus(status, { sessionId }), opts.root, quiet);
     }
-    return await new Promise((resolve) => child.on('close', (code) => {
-        observer?.stop();
-        resolve(code ?? 0);
-    }));
+    return await new Promise((resolve) => {
+        let settled = false;
+        const finish = (code) => {
+            if (settled)
+                return;
+            settled = true;
+            childClosed = true;
+            observer?.stop();
+            resolve(code);
+        };
+        child.on('error', (e) => {
+            const status = {
+                ok: true,
+                enabled: false,
+                reason: `spawn failed: ${e.message}`,
+                samplingIntervalMs: opts.observerIntervalMs ?? 250,
+                mode: 'self_report_only',
+                profile: profile.name,
+            };
+            recordAndMaybeAlert(eventFromObserverStatus(status, { sessionId }), opts.root, quiet);
+            finish(127);
+        });
+        child.on('close', (code) => finish(code ?? 0));
+    });
 }
 //# sourceMappingURL=stdio.js.map

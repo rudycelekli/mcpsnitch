@@ -65,6 +65,7 @@ function readProfileFile(path: string): ServerProfile {
 
 /** Resolve a built-in profile name or a JSON profile file path. */
 export function resolveProfile(spec = 'generic'): ServerProfile {
+  if (spec === 'auto') return BUILTIN_PROFILES.generic;
   if (BUILTIN_PROFILES[spec]) return BUILTIN_PROFILES[spec];
   const path = resolve(spec);
   if (existsSync(path)) return readProfileFile(path);
@@ -94,6 +95,20 @@ export function makeProfile(opts: Partial<ServerProfile> & { name: string }): Se
     allowSensitiveFiles: false,
     ...opts,
   });
+}
+
+export function inferProfileFromCommand(command: string, args: string[] = []): string {
+  const joined = [command, ...args].join(' ').toLowerCase();
+  if (/github|gh-|gh_|@modelcontextprotocol\/server-github/.test(joined)) return 'github';
+  if (/brave|search|fetch|browser|puppeteer|playwright|firecrawl|web/.test(joined)) return 'fetch';
+  if (/filesystem|file-system|fs-server|server-filesystem|read-file|read_file/.test(joined)) return 'filesystem';
+  if (/postgres|postgresql|mysql|sqlite|database|mongodb|redis|supabase/.test(joined)) return 'database';
+  return 'generic';
+}
+
+export function resolveProfileForCommand(spec: string | undefined, command: string, args: string[] = []): ServerProfile {
+  const resolvedSpec = !spec || spec === 'auto' ? inferProfileFromCommand(command, args) : spec;
+  return resolveProfile(resolvedSpec);
 }
 
 export function learnProfileFromEvents(events: AuditEvent[], opts: { name: string; description?: string }): ServerProfile {
