@@ -6,16 +6,16 @@
   "baseline": {
     "name": "raw JSON.parse forwarding",
     "p50Ms": 0.000708,
-    "p95Ms": 0.000792,
-    "p99Ms": 0.00175
+    "p95Ms": 0.000875,
+    "p99Ms": 0.001833
   },
   "mcpsnitch": {
     "name": "analyzeJsonRpc proxy tap",
-    "p50Ms": 0.009334,
-    "p95Ms": 0.015625,
-    "p99Ms": 0.047583
+    "p50Ms": 0.00925,
+    "p95Ms": 0.015792,
+    "p99Ms": 0.061541
   },
-  "deltaP99Ms": 0.045833,
+  "deltaP99Ms": 0.059708,
   "anomalyPrecision": 1,
   "maliciousInjected": 50,
   "flagged": 50

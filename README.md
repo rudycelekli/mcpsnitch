@@ -21,7 +21,7 @@ Current bundled benchmark (`npm run bench`) compares raw JSON parsing/forwarding
 
 | Metric | Raw | MCPSnitch | Delta |
 |---|---:|---:|---:|
-| p99 latency | 0.0018ms | 0.0476ms | 0.0458ms (<5ms pass) |
+| p99 latency | 0.0018ms | 0.0615ms | 0.0597ms (<5ms pass) |
 
 Anomaly precision on injected malicious calls: **1.000** (50 flagged / 50 malicious).
 
