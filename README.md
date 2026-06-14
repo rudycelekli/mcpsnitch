@@ -53,6 +53,7 @@ npm run bench:process
 cat bench/results/process-observer-report.md
 npm run bench:real-mcp
 cat bench/results/real-mcp-process-report.md
+node scripts/live-value-check.mjs --release github:rudycelekli/mcpsnitch#v0.1.6
 ```
 
 The false-positive harness is profile-contextual: legitimate GitHub/fetch/search/database network sockets are informational under network-capable profiles, while the same socket under `filesystem`/`generic` remains alerting.
@@ -62,6 +63,8 @@ Profile-contextual false-positive harness: **0.000** benign alerting rate (0/6) 
 Live process-observer harness: **0.000** benign alerting rate and **1.000** malicious fixture detection against real child processes with real held files/sockets. Short-lived socket observed: **false** (informational sampling-limit check).
 
 Real MCP process-observer dogfood: **0.000** benign alerting rate on required pinned real MCP servers (`@modelcontextprotocol/server-filesystem` and `mcp-server-fetch-typescript`) running as `npx` process trees. The fetch case holds a local HTTP socket open and confirms expected network evidence is observed under the `fetch` profile. Optional GitHub/Brave cases run when credentials are provided; otherwise they are reported as skipped, not silently counted.
+
+Actual released-wrapper dogfood: `node scripts/live-value-check.mjs --release github:rudycelekli/mcpsnitch#v0.1.6` runs the installed GitHub release as `mcpsnitch run`, wraps a real filesystem MCP server, confirms clean work emits zero MCPSnitch alerts, then wraps a live stdio MCP process with an unexpected held socket and confirms exactly one actionable process-observer alert plus a verified witness chain.
 
 ## Architecture
 

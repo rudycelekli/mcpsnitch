@@ -37,7 +37,8 @@
     "bench",
     ".claude-plugin",
     "commands",
-    "skills"
+    "skills",
+    "scripts"
   ],
   "scripts": {
     "build": "tsc",
@@ -48,6 +49,7 @@
     "bench": "node bench/run.mjs",
     "verify": "npm run build && npm test && npm run test:integration && npm run bench && npm run bench:false-positive && npm run bench:process && npm run bench:real-mcp && node dist/cli/index.js verify --root . --json",
     "smoke:tarball": "node scripts/tarball-smoke.mjs",
+    "dogfood:live": "node scripts/live-value-check.mjs --local",
     "bench:false-positive": "node bench/false-positive.mjs",
     "bench:process": "node bench/process-observer.mjs",
     "bench:real-mcp": "node bench/real-mcp-process.mjs"
