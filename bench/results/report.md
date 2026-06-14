@@ -4,7 +4,7 @@ Seed: mcpsnitch-v0.1.1-honest-harness
 
 | Metric | Raw | MCPSnitch | Delta |
 |---|---:|---:|---:|
-| p99 latency | 0.0025ms | 0.0745ms | 0.0720ms |
+| p99 latency | 0.0018ms | 0.1014ms | 0.0995ms |
 
 | Detection metric | Value |
 |---|---:|

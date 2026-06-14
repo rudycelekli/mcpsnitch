@@ -32,6 +32,7 @@
     "README.md",
     "LICENSE",
     "NOTICE",
+    "docs/strategy",
     "bench/results",
     "bench",
     ".claude-plugin",

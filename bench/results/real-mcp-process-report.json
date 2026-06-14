@@ -23,7 +23,7 @@
         "@modelcontextprotocol/server-filesystem@2026.1.14",
         "<tmp>"
       ],
-      "pid": 50088,
+      "pid": 71794,
       "serverInfo": {
         "name": "secure-filesystem-server",
         "version": "0.2.0"
@@ -48,8 +48,8 @@
       "matched": 0,
       "alertingEvents": 0,
       "alertingFindings": [],
-      "durationMs": 1279,
-      "stderrTail": "Secure MCP Filesystem Server running on stdio\nClient does not support MCP Roots, using allowed directories set from server args: [\n  '/private/var/folders/gm/wdg13xcd5dj90cpffbctbv080000gn/T/mcpsnitch-real-mcp-mksPim'\n]\n",
+      "durationMs": 1360,
+      "stderrTail": "Secure MCP Filesystem Server running on stdio\nClient does not support MCP Roots, using allowed directories set from server args: [\n  '/private/var/folders/gm/wdg13xcd5dj90cpffbctbv080000gn/T/mcpsnitch-real-mcp-sTXgE4'\n]\n",
       "during": {
         "toolCalls": [
           "list_directory",
@@ -67,7 +67,7 @@
         "-y",
         "mcp-server-fetch-typescript@0.1.1"
       ],
-      "pid": 50282,
+      "pid": 71991,
       "serverInfo": {
         "name": "mcp-server-fetch-typescript",
         "version": "0.1.0"
@@ -83,7 +83,7 @@
       "alertingEvents": 0,
       "alertingFindings": [],
       "expectedEvidenceObserved": true,
-      "durationMs": 1449,
+      "durationMs": 1884,
       "stderrTail": "",
       "during": {
         "toolCalls": [

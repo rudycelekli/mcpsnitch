@@ -12,17 +12,17 @@
   },
   "baseline": {
     "name": "raw JSON.parse forwarding",
-    "p50Ms": 0.0005,
-    "p95Ms": 0.000959,
-    "p99Ms": 0.002541
+    "p50Ms": 0.000542,
+    "p95Ms": 0.000666,
+    "p99Ms": 0.001834
   },
   "mcpsnitch": {
     "name": "analyzeJsonRpc JSON-RPC heuristic tap",
-    "p50Ms": 0.007458,
-    "p95Ms": 0.018125,
-    "p99Ms": 0.074542
+    "p50Ms": 0.009083,
+    "p95Ms": 0.023875,
+    "p99Ms": 0.101375
   },
-  "deltaP99Ms": 0.072001,
+  "deltaP99Ms": 0.099541,
   "flagged": 100,
   "truePositives": 100,
   "falsePositives": 0,

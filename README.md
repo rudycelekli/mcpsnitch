@@ -20,6 +20,8 @@ After npm publication, the same commands shorten to `npx mcpsnitch ...`.
 
 > **Honesty line:** MCPSnitch v0.1.x logs and heuristically flags what is visible in MCP JSON-RPC traffic, plus best-effort sampled `lsof` observations of the child process when available. It is **observability and a tripwire, not a sandbox**. A malicious MCP server can evade JSON keyword/structure heuristics, can perform side effects inside its own process, and can hide behavior that is not visible to the proxy or sampled process observer.
 
+For the measured value statement and latest proof points, see [`docs/strategy/VALUE_PROOF.md`](docs/strategy/VALUE_PROOF.md).
+
 ## What changes
 
 Before: `npx random-mcp-server` is a black box.  
@@ -31,7 +33,7 @@ Current bundled benchmark (`npm run bench`) compares raw JSON parsing/forwarding
 
 | Metric | Raw | MCPSnitch | Delta |
 |---|---:|---:|---:|
-| p99 latency | 0.0025ms | 0.0745ms | 0.0720ms (<5ms pass) |
+| p99 latency | 0.0018ms | 0.1014ms | 0.0995ms (<5ms pass) |
 
 Current generated detection evidence:
 

@@ -2,7 +2,7 @@
   "ok": true,
   "seed": "mcpsnitch-v0.1.3-live-process-observer",
   "node": "v22.19.0",
-  "fixtureHash": "627522109302584e883d5597431335db09da563f9ab9c3ea6890353a15ebff1f",
+  "fixtureHash": "c7b41d5ff7f01bf89ae797bc6a358b35a5a2c4950f875f9ed4caf8199164778b",
   "corpus": {
     "liveFixtures": 5,
     "benign": 2,
@@ -18,7 +18,7 @@
       "label": "benign",
       "mode": "hold-file",
       "profile": "filesystem",
-      "pid": 49867,
+      "pid": 71601,
       "observations": 8,
       "matched": 1,
       "alertingMatched": 0,
@@ -30,7 +30,7 @@
       "label": "benign",
       "mode": "hold-socket",
       "profile": "fetch",
-      "pid": 49890,
+      "pid": 71624,
       "observations": 8,
       "matched": 1,
       "alertingMatched": 0,
@@ -40,14 +40,14 @@
           "severity": "info"
         }
       ],
-      "arg": "127.0.0.1:49223"
+      "arg": "127.0.0.1:50382"
     },
     {
       "name": "filesystem-unexpected-socket",
       "label": "malicious",
       "mode": "hold-socket",
       "profile": "filesystem",
-      "pid": 49913,
+      "pid": 71647,
       "observations": 8,
       "matched": 1,
       "alertingMatched": 1,
@@ -57,14 +57,14 @@
           "severity": "medium"
         }
       ],
-      "arg": "127.0.0.1:49223"
+      "arg": "127.0.0.1:50382"
     },
     {
       "name": "generic-sensitive-file",
       "label": "malicious",
       "mode": "hold-file",
       "profile": "generic",
-      "pid": 49936,
+      "pid": 71670,
       "observations": 8,
       "matched": 1,
       "alertingMatched": 1,
@@ -82,12 +82,12 @@
       "mode": "short-socket",
       "profile": "filesystem",
       "waitMs": 300,
-      "pid": 49959,
+      "pid": 71693,
       "observations": 7,
       "matched": 0,
       "alertingMatched": 0,
       "matchedFindings": [],
-      "arg": "127.0.0.1:49223"
+      "arg": "127.0.0.1:50382"
     }
   ],
   "honestyNote": "This harness measures the process observer against real child processes with real open files/sockets. The short-lived socket fixture is informational and demonstrates that sampled lsof mode may miss sub-interval activity."
