@@ -106,6 +106,7 @@ export async function watchStdio(opts) {
         void startProcessObserver(child.pid, {
             sessionId,
             profile,
+            launcherCommand: opts.command,
             intervalMs: opts.observerIntervalMs,
             onEvent: (event) => recordAndMaybeAlert(event, opts.root, quiet, alertMode, seenAlerts, opts.serverName),
             onStatus: () => undefined,

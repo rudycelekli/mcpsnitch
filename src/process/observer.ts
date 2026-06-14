@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
+import { basename } from 'node:path';
 import type { AuditEvent, Finding, ProcessObservation } from '../schema.js';
 import { estimateCostUsd, sha256Hex, stableJson } from '../audit/analyzer.js';
 import { resolveProfile, type ServerProfile } from '../policy/profile.js';
@@ -21,6 +22,7 @@ export interface ProcessObserverOptions {
   intervalMs?: number;
   sessionId?: string;
   profile?: string | ServerProfile;
+  launcherCommand?: string;
   onEvent: (event: AuditEvent) => void;
   onStatus?: (status: ProcessObserverStatus) => void;
 }
@@ -40,6 +42,12 @@ function isNoiseFile(value: string): boolean {
 
 function resolveProfileValue(profile?: string | ServerProfile): ServerProfile {
   return typeof profile === 'string' || profile === undefined ? resolveProfile(profile) : profile;
+}
+
+function isPackageLauncher(command?: string): boolean {
+  if (!command) return false;
+  const name = basename(command).toLowerCase();
+  return ['npx', 'npm', 'pnpm', 'yarn', 'bun', 'uvx', 'uv'].includes(name) || name.startsWith('npx.');
 }
 
 /** Parse normal `lsof -nP -p <pid>` output into OS-observed file/socket events. */
@@ -80,6 +88,56 @@ export async function readProcessObservations(pid: number): Promise<ProcessObser
   return parseLsofOutput(stdout, pid);
 }
 
+async function readProcessChildren(): Promise<Map<number, number[]>> {
+  try {
+    const { stdout } = await execFileP('ps', ['-axo', 'pid=,ppid='], { timeout: 2_000, maxBuffer: 1024 * 1024 });
+    const children = new Map<number, number[]>();
+    for (const line of stdout.split('\n')) {
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 2) continue;
+      const pid = Number(parts[0]);
+      const ppid = Number(parts[1]);
+      if (!Number.isFinite(pid) || !Number.isFinite(ppid)) continue;
+      const list = children.get(ppid) ?? [];
+      list.push(pid);
+      children.set(ppid, list);
+    }
+    return children;
+  } catch {
+    return new Map();
+  }
+}
+
+export async function readDescendantPids(pid: number): Promise<number[]> {
+  const children = await readProcessChildren();
+  const seen = new Set<number>();
+  const out: number[] = [];
+  const visit = (parent: number): void => {
+    for (const child of children.get(parent) ?? []) {
+      if (seen.has(child)) continue;
+      seen.add(child);
+      out.push(child);
+      visit(child);
+    }
+  };
+  visit(pid);
+  return out;
+}
+
+export async function readProcessTreeObservations(pid: number): Promise<ProcessObservation[]> {
+  const pids = [pid, ...(await readDescendantPids(pid))];
+  const observations: ProcessObservation[] = [];
+  for (const currentPid of pids) {
+    try {
+      observations.push(...await readProcessObservations(currentPid));
+    } catch (e) {
+      const err = e as NodeJS.ErrnoException;
+      if (currentPid === pid && err.code === 'ENOENT') throw e;
+    }
+  }
+  return observations;
+}
+
 export function eventFromObserverStatus(
   status: ProcessObserverStatus,
   opts: { sessionId?: string; seq?: number; prevHash?: string } = {},
@@ -89,7 +147,7 @@ export function eventFromObserverStatus(
         rule: 'process_observer_sampled_mode',
         severity: 'info',
         message: `process observer enabled in sampled lsof mode (${status.samplingIntervalMs}ms interval)`,
-        evidence: { layer: 'process_observer', sampled: true, samplingIntervalMs: status.samplingIntervalMs, profile: status.profile },
+        evidence: { layer: 'process_observer', sampled: true, processTree: true, samplingIntervalMs: status.samplingIntervalMs, profile: status.profile },
       }]
     : [{
         rule: 'process_observer_unavailable',
@@ -119,17 +177,24 @@ export function eventFromObserverStatus(
 
 export function eventFromObservation(
   observation: ProcessObservation,
-  opts: { sessionId?: string; seq?: number; prevHash?: string; profile?: string | ServerProfile; samplingIntervalMs?: number } = {},
+  opts: { sessionId?: string; seq?: number; prevHash?: string; profile?: string | ServerProfile; samplingIntervalMs?: number; launcherBootstrap?: boolean; launcherCommand?: string } = {},
 ): AuditEvent {
   const profile = resolveProfileValue(opts.profile);
   const interval = opts.samplingIntervalMs ?? DEFAULT_PROCESS_OBSERVER_INTERVAL_MS;
   const findings: Finding[] = [];
   const scopes = observation.kind === 'network_socket' ? ['network'] : ['filesystem'];
   const dataFlow = observation.kind === 'network_socket' ? ['observed_network_socket'] : ['observed_file_open'];
-  const commonEvidence = { layer: 'process_observer', value: observation.value, fd: observation.fd, profile: profile.name, sampled: true, samplingIntervalMs: interval };
+  const commonEvidence = { layer: 'process_observer', value: observation.value, fd: observation.fd, profile: profile.name, sampled: true, samplingIntervalMs: interval, ...(opts.launcherBootstrap ? { launcherBootstrap: true, launcherCommand: opts.launcherCommand } : {}) };
 
   if (observation.kind === 'network_socket') {
-    if (profile.allowNetwork) {
+    if (opts.launcherBootstrap) {
+      findings.push({
+        rule: 'observed_expected_launcher_network_connection',
+        severity: 'info',
+        message: 'package-manager launcher has an OS-observed network socket during MCP server bootstrap; profile enforcement applies to the server process tree after launcher handoff',
+        evidence: commonEvidence,
+      });
+    } else if (profile.allowNetwork) {
       findings.push({
         rule: 'observed_expected_network_connection',
         severity: 'info',
@@ -199,13 +264,13 @@ export async function startProcessObserver(pid: number, opts: ProcessObserverOpt
   const poll = async (): Promise<void> => {
     if (stopped) return;
     try {
-      const observations = await readProcessObservations(pid);
+      const observations = await readProcessTreeObservations(pid);
       for (const obs of observations) {
         if (obs.kind === 'file_open' && isNoiseFile(obs.value) && !isSensitivePath(obs.value)) continue;
-        const key = `${obs.kind}:${obs.fd ?? ''}:${obs.value}`;
+        const key = `${obs.pid}:${obs.kind}:${obs.fd ?? ''}:${obs.value}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        opts.onEvent(eventFromObservation(obs, { sessionId, profile, samplingIntervalMs: intervalMs }));
+        opts.onEvent(eventFromObservation(obs, { sessionId, profile, samplingIntervalMs: intervalMs, launcherBootstrap: obs.pid === pid && obs.kind === 'network_socket' && isPackageLauncher(opts.launcherCommand), launcherCommand: opts.launcherCommand }));
       }
     } catch (e) {
       const err = e as NodeJS.ErrnoException;

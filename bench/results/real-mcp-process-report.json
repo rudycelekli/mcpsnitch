@@ -1,0 +1,107 @@
+{
+  "ok": true,
+  "seed": "mcpsnitch-v0.1.6-real-mcp-process-dogfood",
+  "node": "v22.19.0",
+  "fixtureHash": "41bed71184ad663a067a7f268476aca95c447d197d869d6d331aad032075f503",
+  "corpus": {
+    "requiredRealServers": 2,
+    "optionalRealServersRun": 0,
+    "optionalSkipped": 2
+  },
+  "benignFalsePositiveRate": 0,
+  "benignAlertingServers": [],
+  "requiredEvidenceMisses": [],
+  "results": [
+    {
+      "name": "filesystem-official-npm",
+      "package": "@modelcontextprotocol/server-filesystem@2026.1.14",
+      "label": "required_benign",
+      "profile": "filesystem",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem@2026.1.14",
+        "<tmp>"
+      ],
+      "pid": 50088,
+      "serverInfo": {
+        "name": "secure-filesystem-server",
+        "version": "0.2.0"
+      },
+      "tools": [
+        "read_file",
+        "read_text_file",
+        "read_media_file",
+        "read_multiple_files",
+        "write_file",
+        "edit_file",
+        "create_directory",
+        "list_directory",
+        "list_directory_with_sizes",
+        "directory_tree",
+        "move_file",
+        "search_files",
+        "get_file_info",
+        "list_allowed_directories"
+      ],
+      "observations": 38,
+      "matched": 0,
+      "alertingEvents": 0,
+      "alertingFindings": [],
+      "durationMs": 1279,
+      "stderrTail": "Secure MCP Filesystem Server running on stdio\nClient does not support MCP Roots, using allowed directories set from server args: [\n  '/private/var/folders/gm/wdg13xcd5dj90cpffbctbv080000gn/T/mcpsnitch-real-mcp-mksPim'\n]\n",
+      "during": {
+        "toolCalls": [
+          "list_directory",
+          "read_text_file"
+        ]
+      }
+    },
+    {
+      "name": "fetch-typescript-npm-local-http",
+      "package": "mcp-server-fetch-typescript@0.1.1",
+      "label": "required_benign",
+      "profile": "fetch",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-server-fetch-typescript@0.1.1"
+      ],
+      "pid": 50282,
+      "serverInfo": {
+        "name": "mcp-server-fetch-typescript",
+        "version": "0.1.0"
+      },
+      "tools": [
+        "get_raw_text",
+        "get_rendered_html",
+        "get_markdown",
+        "get_markdown_summary"
+      ],
+      "observations": 39,
+      "matched": 1,
+      "alertingEvents": 0,
+      "alertingFindings": [],
+      "expectedEvidenceObserved": true,
+      "durationMs": 1449,
+      "stderrTail": "",
+      "during": {
+        "toolCalls": [
+          "get_raw_text"
+        ],
+        "heldSocketObservedDuringCall": true
+      }
+    }
+  ],
+  "optionalSkipped": [
+    {
+      "name": "github-official-npm",
+      "reason": "GITHUB_PERSONAL_ACCESS_TOKEN/GITHUB_TOKEN not set"
+    },
+    {
+      "name": "brave-search-official-npm",
+      "reason": "BRAVE_API_KEY not set"
+    }
+  ],
+  "honestyNote": "This harness runs real pinned MCP npm packages as child process trees. It measures alerting false positives from the same lsof process-observer layer MCPSnitch uses in guard mode. Optional GitHub/Brave cases require user-provided credentials and are skipped without weakening the required local measurement."
+}

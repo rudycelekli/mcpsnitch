@@ -9,11 +9,11 @@
 # /mcpsnitch:mcpsnitch-init
 
 # Direct CLI use from the public GitHub release/package source:
-npx -y github:rudycelekli/mcpsnitch#v0.1.5 init
-npx -y github:rudycelekli/mcpsnitch#v0.1.5 run -- <mcp-server-command> [args...]
-npx -y github:rudycelekli/mcpsnitch#v0.1.5 analyze '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"summarize","arguments":{"destinationUrl":"https://example.com","token":"sk-abcdefghijklmnopqrstuvwxyz"}}}' --json
-npx -y github:rudycelekli/mcpsnitch#v0.1.5 report --json
-npx -y github:rudycelekli/mcpsnitch#v0.1.5 verify --json
+npx -y github:rudycelekli/mcpsnitch#v0.1.6 init
+npx -y github:rudycelekli/mcpsnitch#v0.1.6 run -- <mcp-server-command> [args...]
+npx -y github:rudycelekli/mcpsnitch#v0.1.6 analyze '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"summarize","arguments":{"destinationUrl":"https://example.com","token":"sk-abcdefghijklmnopqrstuvwxyz"}}}' --json
+npx -y github:rudycelekli/mcpsnitch#v0.1.6 report --json
+npx -y github:rudycelekli/mcpsnitch#v0.1.6 verify --json
 ```
 
 After npm publication, the same commands shorten to `npx mcpsnitch ...`.
@@ -31,7 +31,7 @@ Current bundled benchmark (`npm run bench`) compares raw JSON parsing/forwarding
 
 | Metric | Raw | MCPSnitch | Delta |
 |---|---:|---:|---:|
-| p99 latency | 0.0011ms | 0.0635ms | 0.0625ms (<5ms pass) |
+| p99 latency | 0.0025ms | 0.0745ms | 0.0720ms (<5ms pass) |
 
 Current generated detection evidence:
 
@@ -49,6 +49,8 @@ npm run bench:false-positive
 cat bench/results/false-positive-report.md
 npm run bench:process
 cat bench/results/process-observer-report.md
+npm run bench:real-mcp
+cat bench/results/real-mcp-process-report.md
 ```
 
 The false-positive harness is profile-contextual: legitimate GitHub/fetch/search/database network sockets are informational under network-capable profiles, while the same socket under `filesystem`/`generic` remains alerting.
@@ -56,6 +58,8 @@ The false-positive harness is profile-contextual: legitimate GitHub/fetch/search
 Profile-contextual false-positive harness: **0.000** benign alerting rate (0/6) and **1.000** detection on the included malicious fixtures.
 
 Live process-observer harness: **0.000** benign alerting rate and **1.000** malicious fixture detection against real child processes with real held files/sockets. Short-lived socket observed: **false** (informational sampling-limit check).
+
+Real MCP process-observer dogfood: **0.000** benign alerting rate on required pinned real MCP servers (`@modelcontextprotocol/server-filesystem` and `mcp-server-fetch-typescript`) running as `npx` process trees. The fetch case holds a local HTTP socket open and confirms expected network evidence is observed under the `fetch` profile. Optional GitHub/Brave cases run when credentials are provided; otherwise they are reported as skipped, not silently counted.
 
 ## Architecture
 
@@ -74,8 +78,9 @@ flowchart LR
 2. MCPSnitch forwards traffic while tapping line-delimited JSON-RPC messages.
 3. `tools/call` messages are classified for visible scope, data flow, cost, and heuristic findings.
 4. When `lsof` is available, MCPSnitch samples the child process for open files and network sockets and records the sampling interval. If it is unavailable, MCPSnitch logs a high-severity self-report-only downgrade event.
-5. Events are appended to a hash-chained JSONL audit log.
-6. CLI, HTTP, and MCP endpoints read the same log.
+5. The process observer follows the wrapped process tree so package-manager launchers like `npx` do not hide the actual MCP server child. Package-manager bootstrap network is recorded as launcher evidence instead of being confused with server-profile behavior.
+6. Events are appended to a hash-chained JSONL audit log.
+7. CLI, HTTP, and MCP endpoints read the same log.
 
 ## Claude Code plugin install
 
@@ -89,7 +94,7 @@ MCPSnitch ships as a Claude Code plugin/marketplace package. After adding the ma
 /mcpsnitch:mcpsnitch-report
 ```
 
-`/mcpsnitch:mcpsnitch-init` is a thin wrapper over `npx -y github:rudycelekli/mcpsnitch#v0.1.5 init`. It creates a visible backup before patching, writes `.mcpsnitch/profiles.json`, and can be reversed with `mcpsnitch uninit`. By default it looks for project-local configs (`.mcp.json` and project Claude settings); use `--config <path>` or `--global` before patching `~/.claude.json`.
+`/mcpsnitch:mcpsnitch-init` is a thin wrapper over `npx -y github:rudycelekli/mcpsnitch#v0.1.6 init`. It creates a visible backup before patching, writes `.mcpsnitch/profiles.json`, and can be reversed with `mcpsnitch uninit`. By default it looks for project-local configs (`.mcp.json` and project Claude settings); use `--config <path>` or `--global` before patching `~/.claude.json`.
 
 ## Product behavior
 

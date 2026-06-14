@@ -15,7 +15,7 @@ test('Claude Code plugin manifest and marketplace resolve to the MCPSnitch plugi
   const plugin = readJson(pluginPath);
   const marketplace = readJson(marketplacePath);
   assert.equal(plugin.name, 'mcpsnitch');
-  assert.equal(plugin.version, '0.1.5');
+  assert.equal(plugin.version, '0.1.6');
   assert.equal(plugin.commands, './commands');
   assert.equal(plugin.skills, './skills');
   assert.equal(marketplace.name, 'mcpsnitch');
@@ -26,14 +26,14 @@ test('Claude Code slash commands are thin wrappers over existing CLI commands', 
   const init = read(join(ROOT, 'commands', 'mcpsnitch-init.md'));
   const run = read(join(ROOT, 'commands', 'mcpsnitch-run.md'));
   const report = read(join(ROOT, 'commands', 'mcpsnitch-report.md'));
-  assert.match(init, /npx -y github:rudycelekli\/mcpsnitch#v0\.1\.5 init \$ARGUMENTS/);
-  assert.match(init, /mcpsnitch#v0\.1\.5 uninit/);
+  assert.match(init, /npx -y github:rudycelekli\/mcpsnitch#v0\.1\.6 init \$ARGUMENTS/);
+  assert.match(init, /mcpsnitch#v0\.1\.6 uninit/);
   assert.match(init, /backed up/);
   assert.match(init, /--global/);
-  assert.match(run, /npx -y github:rudycelekli\/mcpsnitch#v0\.1\.5 run \$ARGUMENTS/);
+  assert.match(run, /npx -y github:rudycelekli\/mcpsnitch#v0\.1\.6 run \$ARGUMENTS/);
   assert.match(run, /only speaks when the process observer sees/);
-  assert.match(report, /mcpsnitch#v0\.1\.5 report \$ARGUMENTS/);
-  assert.match(report, /mcpsnitch#v0\.1\.5 verify \$ARGUMENTS/);
+  assert.match(report, /mcpsnitch#v0\.1\.6 report \$ARGUMENTS/);
+  assert.match(report, /mcpsnitch#v0\.1\.6 verify \$ARGUMENTS/);
 });
 
 test('silent-guard skill preserves observability-not-prevention honesty', () => {

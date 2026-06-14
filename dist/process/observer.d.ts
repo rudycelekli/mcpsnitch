@@ -13,6 +13,7 @@ export interface ProcessObserverOptions {
     intervalMs?: number;
     sessionId?: string;
     profile?: string | ServerProfile;
+    launcherCommand?: string;
     onEvent: (event: AuditEvent) => void;
     onStatus?: (status: ProcessObserverStatus) => void;
 }
@@ -24,6 +25,8 @@ export interface ProcessObserverHandle {
 export declare function parseLsofOutput(output: string, pidHint?: number): ProcessObservation[];
 export declare function lsofAvailable(): Promise<boolean>;
 export declare function readProcessObservations(pid: number): Promise<ProcessObservation[]>;
+export declare function readDescendantPids(pid: number): Promise<number[]>;
+export declare function readProcessTreeObservations(pid: number): Promise<ProcessObservation[]>;
 export declare function eventFromObserverStatus(status: ProcessObserverStatus, opts?: {
     sessionId?: string;
     seq?: number;
@@ -35,5 +38,7 @@ export declare function eventFromObservation(observation: ProcessObservation, op
     prevHash?: string;
     profile?: string | ServerProfile;
     samplingIntervalMs?: number;
+    launcherBootstrap?: boolean;
+    launcherCommand?: string;
 }): AuditEvent;
 export declare function startProcessObserver(pid: number, opts: ProcessObserverOptions): Promise<ProcessObserverHandle>;

@@ -11,7 +11,7 @@ Initialize MCPSnitch by patching the selected MCP config at the config-entry lev
 Run:
 
 ```bash
-npx -y github:rudycelekli/mcpsnitch#v0.1.5 init $ARGUMENTS
+npx -y github:rudycelekli/mcpsnitch#v0.1.6 init $ARGUMENTS
 ```
 
 Expected clean result includes lines like:
@@ -28,5 +28,5 @@ If a configured MCP server is remote HTTP/SSE, MCPSnitch must report that it is 
 To reverse the config-level wrapping:
 
 ```bash
-npx -y github:rudycelekli/mcpsnitch#v0.1.5 uninit
+npx -y github:rudycelekli/mcpsnitch#v0.1.6 uninit
 ```

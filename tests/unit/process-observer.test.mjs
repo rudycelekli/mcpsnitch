@@ -26,6 +26,18 @@ test('process observations become explicit process_observer audit events', () =>
   assert.ok(file.findings.some((f) => f.rule === 'observed_sensitive_file_open'));
 });
 
+
+
+test('package-manager launcher bootstrap network is recorded as info, not a server-profile violation', () => {
+  const event = eventFromObservation(
+    { pid: 12345, kind: 'network_socket', value: 'TCP 127.0.0.1:1->104.16.0.1:443', fd: '22u', protocol: 'IPv4' },
+    { sessionId: 's', profile: 'filesystem', launcherBootstrap: true, launcherCommand: 'npx' },
+  );
+  assert.equal(event.findings[0].rule, 'observed_expected_launcher_network_connection');
+  assert.equal(event.findings[0].severity, 'info');
+  assert.equal(event.findings[0].evidence.launcherBootstrap, true);
+});
+
 test('server profiles contextualize expected network observations', () => {
   const net = eventFromObservation({ pid: 12345, kind: 'network_socket', value: 'TCP 127.0.0.1:1->140.82.112.6:443', fd: '22u', protocol: 'IPv4' }, { sessionId: 's', profile: 'github' });
   assert.equal(net.findings[0].rule, 'observed_expected_network_connection');

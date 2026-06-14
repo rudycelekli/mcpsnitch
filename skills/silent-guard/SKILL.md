@@ -22,7 +22,7 @@ Use this skill when the user wants MCP runtime observability, MCP security audit
 Run:
 
 ```bash
-npx -y github:rudycelekli/mcpsnitch#v0.1.5 init
+npx -y github:rudycelekli/mcpsnitch#v0.1.6 init
 ```
 
 This config-level wrapper backs up the MCP config, wraps configured stdio MCP server entries with `mcpsnitch run`, and writes `.mcpsnitch/profiles.json` with conservative profile mappings. It searches project-local config by default; use `--config <path>` or `--global` deliberately for user-level Claude config.
@@ -44,7 +44,7 @@ Clean means the process observer is available and observed server behavior stays
 If wrapping causes trouble, run:
 
 ```bash
-npx -y github:rudycelekli/mcpsnitch#v0.1.5 uninit
+npx -y github:rudycelekli/mcpsnitch#v0.1.6 uninit
 ```
 
 The init and uninit paths both back up the MCP config before changing it.

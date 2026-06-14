@@ -9,7 +9,7 @@ $ARGUMENTS
 Run one stdio MCP server through MCPSnitch's transparent proxy. In guard mode, MCPSnitch records the JSON-RPC heuristic layer but only speaks when the process observer sees a real OS-level violation or when process observation is unavailable.
 
 ```bash
-npx -y github:rudycelekli/mcpsnitch#v0.1.5 run $ARGUMENTS
+npx -y github:rudycelekli/mcpsnitch#v0.1.6 run $ARGUMENTS
 ```
 
 Silence rule:
@@ -21,5 +21,5 @@ Silence rule:
 For watching all configured Claude Code MCP servers, prefer:
 
 ```bash
-npx -y github:rudycelekli/mcpsnitch#v0.1.5 init
+npx -y github:rudycelekli/mcpsnitch#v0.1.6 init
 ```

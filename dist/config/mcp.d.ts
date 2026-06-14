@@ -68,7 +68,7 @@ export interface UninitResult {
     unwrapped: string[];
     messages: string[];
 }
-export declare const DEFAULT_WRAPPER_PACKAGE = "github:rudycelekli/mcpsnitch#v0.1.5";
+export declare const DEFAULT_WRAPPER_PACKAGE = "github:rudycelekli/mcpsnitch#v0.1.6";
 export declare function defaultMcpConfigCandidates(root?: string, includeGlobal?: boolean): string[];
 export declare function findMcpConfigPath(root?: string, explicit?: string, includeGlobal?: boolean): string;
 export declare function isRemoteMcpServer(entry: McpServerEntry): boolean;
