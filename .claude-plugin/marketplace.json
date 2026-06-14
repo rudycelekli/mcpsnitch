@@ -1,0 +1,31 @@
+{
+  "name": "mcpsnitch",
+  "owner": {
+    "name": "rudycelekli",
+    "url": "https://github.com/rudycelekli"
+  },
+  "plugins": [
+    {
+      "name": "mcpsnitch",
+      "source": "./",
+      "description": "Silent MCP process-observer guard and tamper-evident audit witness chain.",
+      "version": "0.1.5",
+      "author": {
+        "name": "rudycelekli",
+        "url": "https://github.com/rudycelekli"
+      },
+      "category": "security",
+      "tags": [
+        "mcp",
+        "security",
+        "observability",
+        "audit",
+        "process-observer"
+      ]
+    }
+  ],
+  "metadata": {
+    "description": "MCPSnitch marketplace: silent MCP runtime observability, process-observer alerts, and witness-chain audit logs for Claude Code MCP servers.",
+    "version": "0.1.5"
+  }
+}

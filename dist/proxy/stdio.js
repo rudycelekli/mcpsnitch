@@ -4,6 +4,7 @@ import { appendEvent } from '../log/store.js';
 import { analyzeJsonRpc } from '../audit/analyzer.js';
 import { eventFromObserverStatus, startProcessObserver } from '../process/observer.js';
 import { resolveProfileForCommand } from '../policy/profile.js';
+import { readProfileSpecForServer } from '../config/mcp.js';
 function installLineTap(stream, onLine) {
     let buf = '';
     stream.on('data', (chunk) => {
@@ -19,20 +20,27 @@ function installLineTap(stream, onLine) {
         }
     });
 }
-export function alertingFindings(event) {
-    return event.findings.filter((f) => f.severity === 'medium' || f.severity === 'high');
+export function alertingFindings(event, mode = 'all') {
+    return event.findings.filter((f) => {
+        if (f.severity !== 'medium' && f.severity !== 'high')
+            return false;
+        if (mode === 'all')
+            return true;
+        return event.source === 'process_observer' || f.evidence.layer === 'process_observer';
+    });
 }
 function quoteAlertValue(value) {
     return JSON.stringify(String(value ?? 'n/a').replace(/[\r\n]+/g, ' '));
 }
-export function formatActionableAlert(event) {
-    const findings = alertingFindings(event);
+export function formatActionableAlert(event, mode = 'all') {
+    const findings = alertingFindings(event, mode);
     if (findings.length === 0)
         return '';
     const primary = findings[0];
     const profile = quoteAlertValue(primary.evidence.profile ?? 'n/a');
     const observed = event.observation?.value ? ` observed=${quoteAlertValue(event.observation.value)}` : '';
     const tool = event.toolName ? ` tool=${quoteAlertValue(event.toolName)}` : '';
+    const server = typeof primary.evidence.serverName === 'string' ? ` server=${quoteAlertValue(primary.evidence.serverName)}` : '';
     const reason = String(primary.evidence.reason ?? '');
     const evidenceLayer = String(primary.evidence.layer ?? event.source ?? 'jsonrpc_heuristic');
     const action = primary.rule === 'process_observer_unavailable'
@@ -48,27 +56,48 @@ export function formatActionableAlert(event) {
                     : primary.rule.includes('sensitive_file') || primary.rule.includes('file')
                         ? 'verify this server should read the file; if not, revoke/isolate the server and inspect the audit log'
                         : 'inspect the audit log and server profile';
-    return `MCPSNITCH ALERT severity=${primary.severity} rule=${primary.rule} source=${event.source ?? 'jsonrpc_heuristic'} profile=${profile}${tool}${observed} action=${quoteAlertValue(action)}\n`;
+    return `MCPSNITCH ALERT severity=${primary.severity} rule=${primary.rule} source=${event.source ?? 'jsonrpc_heuristic'} profile=${profile}${server}${tool}${observed} action=${quoteAlertValue(action)}\n`;
 }
-function recordAndMaybeAlert(event, root, quiet) {
-    const appended = appendEvent(event, root);
-    const alert = formatActionableAlert(appended);
-    if (alert)
+function eventWithServerName(event, serverName) {
+    if (!serverName)
+        return event;
+    return {
+        ...event,
+        findings: event.findings.map((finding) => ({
+            ...finding,
+            evidence: { ...finding.evidence, serverName },
+        })),
+    };
+}
+function alertDedupeKey(event) {
+    const finding = alertingFindings(event, 'all')[0];
+    return [finding?.rule ?? 'none', finding?.evidence.profile ?? '', finding?.evidence.serverName ?? '', event.observation?.kind ?? '', event.observation?.value ?? '', event.toolName ?? ''].join('|');
+}
+function recordAndMaybeAlert(event, root, quiet, alertMode, seenAlerts, serverName) {
+    const appended = appendEvent(eventWithServerName(event, serverName), root);
+    const alert = formatActionableAlert(appended, alertMode);
+    const key = alert ? alertDedupeKey(appended) : '';
+    if (alert && !seenAlerts.has(key)) {
+        seenAlerts.add(key);
         process.stderr.write(alert);
-    else if (!quiet && appended.findings.some((f) => f.rule === 'process_observer_sampled_mode')) {
+    }
+    else if (!alert && !quiet && appended.findings.some((f) => f.rule === 'process_observer_sampled_mode')) {
         process.stderr.write(`mcpsnitch: process observer enabled (${appended.findings[0].evidence.samplingIntervalMs}ms sampled mode, profile=${appended.findings[0].evidence.profile}).\n`);
     }
 }
 export async function watchStdio(opts) {
     const sessionId = opts.sessionId ?? randomUUID();
     const args = opts.args ?? [];
-    const profile = resolveProfileForCommand(opts.profile ?? 'auto', opts.command, args);
+    const profileSpec = readProfileSpecForServer(opts.profileConfigPath, opts.serverName, opts.root) ?? opts.profile ?? 'auto';
+    const profile = resolveProfileForCommand(profileSpec, opts.command, args);
     const quiet = opts.quiet ?? false;
+    const alertMode = opts.alertMode ?? 'all';
+    const seenAlerts = new Set();
     const child = spawn(opts.command, args, { stdio: ['pipe', 'pipe', 'inherit'] });
     let observer;
     let childClosed = false;
-    installLineTap(process.stdin, (line) => recordAndMaybeAlert(analyzeJsonRpc(line, { sessionId, direction: 'client_to_server' }), opts.root, quiet));
-    installLineTap(child.stdout, (line) => recordAndMaybeAlert(analyzeJsonRpc(line, { sessionId, direction: 'server_to_client' }), opts.root, quiet));
+    installLineTap(process.stdin, (line) => recordAndMaybeAlert(analyzeJsonRpc(line, { sessionId, direction: 'client_to_server' }), opts.root, quiet, alertMode, seenAlerts, opts.serverName));
+    installLineTap(child.stdout, (line) => recordAndMaybeAlert(analyzeJsonRpc(line, { sessionId, direction: 'server_to_client' }), opts.root, quiet, alertMode, seenAlerts, opts.serverName));
     process.stdin.pipe(child.stdin);
     child.stdout.pipe(process.stdout);
     // Start process observation after the transparent pipe is already flowing so
@@ -78,7 +107,7 @@ export async function watchStdio(opts) {
             sessionId,
             profile,
             intervalMs: opts.observerIntervalMs,
-            onEvent: (event) => recordAndMaybeAlert(event, opts.root, quiet),
+            onEvent: (event) => recordAndMaybeAlert(event, opts.root, quiet, alertMode, seenAlerts, opts.serverName),
             onStatus: () => undefined,
         }).then((handle) => {
             observer = handle;
@@ -93,7 +122,7 @@ export async function watchStdio(opts) {
                 mode: 'self_report_only',
                 profile: profile.name,
             };
-            recordAndMaybeAlert(eventFromObserverStatus(status, { sessionId }), opts.root, quiet);
+            recordAndMaybeAlert(eventFromObserverStatus(status, { sessionId }), opts.root, quiet, alertMode, seenAlerts, opts.serverName);
         });
     }
     else if (opts.processObserver === false) {
@@ -105,7 +134,7 @@ export async function watchStdio(opts) {
             mode: 'self_report_only',
             profile: profile.name,
         };
-        recordAndMaybeAlert(eventFromObserverStatus(status, { sessionId }), opts.root, quiet);
+        recordAndMaybeAlert(eventFromObserverStatus(status, { sessionId }), opts.root, quiet, alertMode, seenAlerts, opts.serverName);
     }
     return await new Promise((resolve) => {
         let settled = false;
@@ -126,7 +155,7 @@ export async function watchStdio(opts) {
                 mode: 'self_report_only',
                 profile: profile.name,
             };
-            recordAndMaybeAlert(eventFromObserverStatus(status, { sessionId }), opts.root, quiet);
+            recordAndMaybeAlert(eventFromObserverStatus(status, { sessionId }), opts.root, quiet, alertMode, seenAlerts, opts.serverName);
             finish(127);
         });
         child.on('close', (code) => finish(code ?? 0));

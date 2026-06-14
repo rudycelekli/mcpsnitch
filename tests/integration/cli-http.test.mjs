@@ -29,7 +29,7 @@ test('HTTP server exposes POST /analyze and GET /report', async () => {
   const { port } = JSON.parse(line);
   const versionRes = await fetch(`http://127.0.0.1:${port}/version`);
   const version = await versionRes.json();
-  assert.equal(version.version, '0.1.4');
+  assert.equal(version.version, '0.1.5');
   assert.ok(version.endpoints.includes('GET /version'));
   const msg = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'read_file', arguments: { path: '/etc/passwd' } } };
   const res = await fetch(`http://127.0.0.1:${port}/analyze`, { method: 'POST', body: JSON.stringify(msg) });

@@ -1,1 +1,1 @@
-export const MCPSNITCH_VERSION = '0.1.4';
+export const MCPSNITCH_VERSION = '0.1.5';

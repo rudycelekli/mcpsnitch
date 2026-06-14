@@ -1,0 +1,22 @@
+{
+  "name": "mcpsnitch",
+  "description": "Silent MCP runtime security observability: config-level stdio MCP wrapping, lsof process-observer alerts, and tamper-evident audit logs.",
+  "version": "0.1.5",
+  "author": {
+    "name": "rudycelekli",
+    "url": "https://github.com/rudycelekli"
+  },
+  "homepage": "https://github.com/rudycelekli/mcpsnitch",
+  "repository": "https://github.com/rudycelekli/mcpsnitch",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "security",
+    "observability",
+    "audit",
+    "process-observer",
+    "claude-code"
+  ],
+  "commands": "./commands",
+  "skills": "./skills"
+}

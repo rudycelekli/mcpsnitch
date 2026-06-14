@@ -4,6 +4,7 @@ import { appendEvent } from '../log/store.js';
 import { analyzeJsonRpc } from '../audit/analyzer.js';
 import { eventFromObserverStatus, startProcessObserver, type ProcessObserverHandle } from '../process/observer.js';
 import { resolveProfileForCommand } from '../policy/profile.js';
+import { readProfileSpecForServer } from '../config/mcp.js';
 import type { AuditEvent, Finding } from '../schema.js';
 
 export interface WatchOptions {
@@ -15,6 +16,12 @@ export interface WatchOptions {
   processObserver?: boolean;
   /** Expected behavior profile name/path, or auto. */
   profile?: string;
+  /** MCP server name used for profile-config lookups and alert context. */
+  serverName?: string;
+  /** Editable .mcpsnitch/profiles.json mapping written by mcpsnitch init. */
+  profileConfigPath?: string;
+  /** Which findings should speak to stderr. run uses process; watch uses all. */
+  alertMode?: 'process' | 'all';
   /** Sampling interval for lsof process observation. */
   observerIntervalMs?: number;
   /** When true, clean/info-only sessions emit nothing to stderr. */
@@ -35,21 +42,26 @@ function installLineTap(stream: NodeJS.ReadableStream, onLine: (line: string) =>
   });
 }
 
-export function alertingFindings(event: AuditEvent): Finding[] {
-  return event.findings.filter((f) => f.severity === 'medium' || f.severity === 'high');
+export function alertingFindings(event: AuditEvent, mode: 'process' | 'all' = 'all'): Finding[] {
+  return event.findings.filter((f) => {
+    if (f.severity !== 'medium' && f.severity !== 'high') return false;
+    if (mode === 'all') return true;
+    return event.source === 'process_observer' || f.evidence.layer === 'process_observer';
+  });
 }
 
 function quoteAlertValue(value: unknown): string {
   return JSON.stringify(String(value ?? 'n/a').replace(/[\r\n]+/g, ' '));
 }
 
-export function formatActionableAlert(event: AuditEvent): string {
-  const findings = alertingFindings(event);
+export function formatActionableAlert(event: AuditEvent, mode: 'process' | 'all' = 'all'): string {
+  const findings = alertingFindings(event, mode);
   if (findings.length === 0) return '';
   const primary = findings[0];
   const profile = quoteAlertValue(primary.evidence.profile ?? 'n/a');
   const observed = event.observation?.value ? ` observed=${quoteAlertValue(event.observation.value)}` : '';
   const tool = event.toolName ? ` tool=${quoteAlertValue(event.toolName)}` : '';
+  const server = typeof primary.evidence.serverName === 'string' ? ` server=${quoteAlertValue(primary.evidence.serverName)}` : '';
   const reason = String(primary.evidence.reason ?? '');
   const evidenceLayer = String(primary.evidence.layer ?? event.source ?? 'jsonrpc_heuristic');
   const action = primary.rule === 'process_observer_unavailable'
@@ -65,14 +77,33 @@ export function formatActionableAlert(event: AuditEvent): string {
           : primary.rule.includes('sensitive_file') || primary.rule.includes('file')
             ? 'verify this server should read the file; if not, revoke/isolate the server and inspect the audit log'
             : 'inspect the audit log and server profile';
-  return `MCPSNITCH ALERT severity=${primary.severity} rule=${primary.rule} source=${event.source ?? 'jsonrpc_heuristic'} profile=${profile}${tool}${observed} action=${quoteAlertValue(action)}\n`;
+  return `MCPSNITCH ALERT severity=${primary.severity} rule=${primary.rule} source=${event.source ?? 'jsonrpc_heuristic'} profile=${profile}${server}${tool}${observed} action=${quoteAlertValue(action)}\n`;
 }
 
-function recordAndMaybeAlert(event: AuditEvent, root: string | undefined, quiet: boolean): void {
-  const appended = appendEvent(event, root);
-  const alert = formatActionableAlert(appended);
-  if (alert) process.stderr.write(alert);
-  else if (!quiet && appended.findings.some((f) => f.rule === 'process_observer_sampled_mode')) {
+function eventWithServerName(event: AuditEvent, serverName: string | undefined): AuditEvent {
+  if (!serverName) return event;
+  return {
+    ...event,
+    findings: event.findings.map((finding) => ({
+      ...finding,
+      evidence: { ...finding.evidence, serverName },
+    })),
+  };
+}
+
+function alertDedupeKey(event: AuditEvent): string {
+  const finding = alertingFindings(event, 'all')[0];
+  return [finding?.rule ?? 'none', finding?.evidence.profile ?? '', finding?.evidence.serverName ?? '', event.observation?.kind ?? '', event.observation?.value ?? '', event.toolName ?? ''].join('|');
+}
+
+function recordAndMaybeAlert(event: AuditEvent, root: string | undefined, quiet: boolean, alertMode: 'process' | 'all', seenAlerts: Set<string>, serverName?: string): void {
+  const appended = appendEvent(eventWithServerName(event, serverName), root);
+  const alert = formatActionableAlert(appended, alertMode);
+  const key = alert ? alertDedupeKey(appended) : '';
+  if (alert && !seenAlerts.has(key)) {
+    seenAlerts.add(key);
+    process.stderr.write(alert);
+  } else if (!alert && !quiet && appended.findings.some((f) => f.rule === 'process_observer_sampled_mode')) {
     process.stderr.write(`mcpsnitch: process observer enabled (${appended.findings[0].evidence.samplingIntervalMs}ms sampled mode, profile=${appended.findings[0].evidence.profile}).\n`);
   }
 }
@@ -80,14 +111,17 @@ function recordAndMaybeAlert(event: AuditEvent, root: string | undefined, quiet:
 export async function watchStdio(opts: WatchOptions): Promise<number> {
   const sessionId = opts.sessionId ?? randomUUID();
   const args = opts.args ?? [];
-  const profile = resolveProfileForCommand(opts.profile ?? 'auto', opts.command, args);
+  const profileSpec = readProfileSpecForServer(opts.profileConfigPath, opts.serverName, opts.root) ?? opts.profile ?? 'auto';
+  const profile = resolveProfileForCommand(profileSpec, opts.command, args);
   const quiet = opts.quiet ?? false;
+  const alertMode = opts.alertMode ?? 'all';
+  const seenAlerts = new Set<string>();
   const child = spawn(opts.command, args, { stdio: ['pipe', 'pipe', 'inherit'] });
   let observer: ProcessObserverHandle | undefined;
   let childClosed = false;
 
-  installLineTap(process.stdin, (line) => recordAndMaybeAlert(analyzeJsonRpc(line, { sessionId, direction: 'client_to_server' }), opts.root, quiet));
-  installLineTap(child.stdout!, (line) => recordAndMaybeAlert(analyzeJsonRpc(line, { sessionId, direction: 'server_to_client' }), opts.root, quiet));
+  installLineTap(process.stdin, (line) => recordAndMaybeAlert(analyzeJsonRpc(line, { sessionId, direction: 'client_to_server' }), opts.root, quiet, alertMode, seenAlerts, opts.serverName));
+  installLineTap(child.stdout!, (line) => recordAndMaybeAlert(analyzeJsonRpc(line, { sessionId, direction: 'server_to_client' }), opts.root, quiet, alertMode, seenAlerts, opts.serverName));
   process.stdin.pipe(child.stdin!);
   child.stdout!.pipe(process.stdout);
 
@@ -98,7 +132,7 @@ export async function watchStdio(opts: WatchOptions): Promise<number> {
       sessionId,
       profile,
       intervalMs: opts.observerIntervalMs,
-      onEvent: (event) => recordAndMaybeAlert(event, opts.root, quiet),
+      onEvent: (event) => recordAndMaybeAlert(event, opts.root, quiet, alertMode, seenAlerts, opts.serverName),
       onStatus: () => undefined,
     }).then((handle) => {
       observer = handle;
@@ -112,7 +146,7 @@ export async function watchStdio(opts: WatchOptions): Promise<number> {
         mode: 'self_report_only' as const,
         profile: profile.name,
       };
-      recordAndMaybeAlert(eventFromObserverStatus(status, { sessionId }), opts.root, quiet);
+      recordAndMaybeAlert(eventFromObserverStatus(status, { sessionId }), opts.root, quiet, alertMode, seenAlerts, opts.serverName);
     });
   } else if (opts.processObserver === false) {
     const status = {
@@ -123,7 +157,7 @@ export async function watchStdio(opts: WatchOptions): Promise<number> {
       mode: 'self_report_only' as const,
       profile: profile.name,
     };
-    recordAndMaybeAlert(eventFromObserverStatus(status, { sessionId }), opts.root, quiet);
+    recordAndMaybeAlert(eventFromObserverStatus(status, { sessionId }), opts.root, quiet, alertMode, seenAlerts, opts.serverName);
   }
 
   return await new Promise((resolve) => {
@@ -144,7 +178,7 @@ export async function watchStdio(opts: WatchOptions): Promise<number> {
         mode: 'self_report_only' as const,
         profile: profile.name,
       };
-      recordAndMaybeAlert(eventFromObserverStatus(status, { sessionId }), opts.root, quiet);
+      recordAndMaybeAlert(eventFromObserverStatus(status, { sessionId }), opts.root, quiet, alertMode, seenAlerts, opts.serverName);
       finish(127);
     });
     child.on('close', (code) => finish(code ?? 0));

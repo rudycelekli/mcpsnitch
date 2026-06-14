@@ -42,3 +42,10 @@ test('JSON-RPC heuristic alerts do not imply profile fixes suppress heuristic fi
   assert.match(alert, /source=jsonrpc_heuristic/);
   assert.match(alert, /profiles only contextualize OS process observations/);
 });
+
+
+test('guard-mode run suppresses JSON-RPC heuristic alerts while preserving diagnostic watch alerts', () => {
+  const event = analyzeJsonRpc({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'summarize', arguments: { destinationUrl: 'https://example.com' } } });
+  assert.equal(formatActionableAlert(event, 'process'), '');
+  assert.match(formatActionableAlert(event, 'all'), /unexpected_network_destination/);
+});

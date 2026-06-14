@@ -5,4 +5,5 @@ export { watchStdio, formatActionableAlert, alertingFindings } from './proxy/std
 export { parseLsofOutput, eventFromObservation, eventFromObserverStatus, lsofAvailable, readProcessObservations, startProcessObserver } from './process/observer.js';
 export { resolveProfile, resolveProfileForCommand, inferProfileFromCommand, listProfiles, BUILTIN_PROFILES, makeProfile, writeProfile, learnProfileFromEvents } from './policy/profile.js';
 export { MCPSNITCH_VERSION } from './version.js';
+export { DEFAULT_WRAPPER_PACKAGE, buildProfilesConfig, defaultMcpConfigCandidates, findMcpConfigPath, initMcpSnitch, uninitMcpSnitch, isRemoteMcpServer, isWrappedMcpServer, readProfileSpecForServer } from './config/mcp.js';
 //# sourceMappingURL=index.js.map
